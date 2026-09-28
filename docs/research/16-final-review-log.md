@@ -223,4 +223,22 @@ Every Round-5 blocker was confirmed resolved. Six of the nine reviews passed. Th
 
 ## Round 7 (v0.9): verification
 
+| Aspect | gpt-6-sol | gpt-6-astra | claude-opus-5.5 |
+|---|---|---|---|
+| **A1 Flows and buildability** | **NO**: 2 blockers | **YES** | **YES** |
+| **A2 Autonomy, safety and resilience** | **NO**: 2 blockers | **YES** | **YES** |
+| **A3 Human experience, fidelity and DoD** | **NO**: 2 blockers | **YES** | **YES** |
+
+Six of nine passed. The three blocking reviews, all from one model, named the same two gaps independently, and one passing review raised the first of them too.
+
+### Consolidated themes and how v0.10 resolves them
+
+| # | Theme (raised by) | Resolution in v0.10 | Where |
+|---|---|---|---|
+| P1 | A pause only stopped issuing credentials, so a live token could still push until it expired (Sol A1, A2, A3; Astra A1; Opus A1) | **A pause is a barrier.** It revokes every outstanding credential at its provider. The agent shows as `pausing` until a probe with the old token is denied, and only then is the pause acknowledged. The repository's proof check also reads the agent's current control epoch | §5, §6.14, F35 |
+| P2 | The takeover converted an agent's `exercise` grants into `delegate` rights, which widens authority (Sol A1, A2, A3) | **Fresh authority, never converted authority.** The successor's Duties get new delegations from the sponsor's existing delegable mandate, with caveats kept and a risk check, or from new consent. Work without one stays parked while the old agent stays fenced. D6 and F35 test that an `exercise`-only grant can't be converted | §6.14, F35, D6 |
+| P3 | Smaller items (Opus A1, A2, A3; Sol A1, A3) | A managed agent runs in a Year96 sandbox, out of reach of the sponsor's own credentials, and CLIs that can't route their model calls can never be managed. Its trusted launcher attests the harness, not the agent itself. Threads, waits and commitments are re-homed. Unmanaged agents get a sponsor-attested retirement. The outside-agent lifecycle is in §5's table. agentgateway is named as the tool gateway. The sealed-eval author is independent, with hashes pinned by the bootstrap verifier. The `AGENTS.md` opening is qualified | §5, §6.14, `AGENTS.md` |
+
+## Round 8 (v0.10): verification
+
 *This section is filled in as the nine reviews come back.*
