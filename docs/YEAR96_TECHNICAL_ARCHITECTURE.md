@@ -1,6 +1,6 @@
 # Year96: Technical Architecture (how the system might look in 2027)
 
-> **Status:** v0.11, 2026-09-29. Synthesized by the Year96 "Owner" (Copilot CLI) from a 15-teammate research sprint, then revised after independent reviews
+> **Status:** v0.12, 2026-09-29. Synthesized by the Year96 "Owner" (Copilot CLI) from a 15-teammate research sprint, then revised after independent reviews
 > and multi-model final review rounds (see [research/16-final-review-log.md](research/16-final-review-log.md)). v0.3 added the spec's **Code** requirement (one machine → millions of agents, §9), the core **model profiles** (§8.1),
 > and a **spec compliance matrix** ([Appendix C](#appendix-c-spec-compliance-matrix)). v0.4 added the Vision's definition of done (§6.12, §6.13, §7.0, §11). v0.5 resolved the
 > nine-review Round 2 (every model × every aspect). Its main additions are the dispatch protocol, commitments, the control epoch, per-profile disaster recovery, multi-human authority and the TCB manifest.
@@ -13,6 +13,7 @@
 > v0.10 resolves Round 7: a pause is a barrier that revokes live tokens, and a takeover mints fresh delegations instead of converting an agent's own rights.
 > v0.11 resolves Round 8 (a way back from `paused`, and authority before liability in a takeover) and adds the Q&A's sixth answer, **the main flow**: data comes in, a state snapshot is created,
 > the scope effect spreads through Ownerships and Duties, tasks are derived, and the loop repeats (§4). Every derived task records its origin.
+> v0.12 resolves Round 9 (an origin record on every derived intent, with its route, root and causal depth) and applies the owner's decision on **Q5**: no local models, only hosted APIs and subscriptions (§8.1).
 > **Companions:** [YEAR96_INTRO.md](YEAR96_INTRO.md) (concepts), [YEAR96_SPEC.md](YEAR96_SPEC.md) (engineering rules),
 > [YEAR96_Vision.md](YEAR96_Vision.md) (end-to-end vision), and the owner's Q&A (`YEAR96_Q&A.md`, kept beside the repository folder). **Evidence:** [research/](research/README.md) holds reports 01–15 with maturity data, sources
 > and license checks. Every *core default* named in this document had its **project** license checked against its LICENSE file or model card (see [Appendix B](#appendix-b-license-verification-ledger)).
@@ -66,7 +67,7 @@ It runs one **main flow**, like any app in the world (Q&A). Data comes in, a sta
     or `fleet` (many cells across regions). Topology is configuration, never code, and every package obeys an enforced *deployability contract*. Millions of agents are mostly
     dormant virtual actors: rows, not pods. At 10M logical agents with 1% active, the real limits are model tokens (~5M/s), sandboxes and human attention (§9). On one machine the stack is Postgres,
     NATS, Temporal (for Builders), OpenFGA/Cedar, LiteLLM and OTel. At scale it is sharded Postgres ledgers, Kafka, Vespa, Feldera/RisingWave, Dapr, Envoy AI Gateway and Kata/Firecracker, organized in cells.
-    **Every core default is permissively licensed, including the model weights (§8.1), and every license was checked.** More than 30 popular projects and models were
+    **Every core default is permissively licensed, and every license was checked.** The owner decided that models are hosted APIs and subscriptions only (Q5), so the core runs no local model weights and no inference GPUs (§8.1). More than 30 popular projects and models were
     excluded from the core or kept as isolated integrations because of their licenses (§8, Appendix B).
 12. **Positioning.** Microsoft, Google, AWS, ServiceNow, Workday, Salesforce and SAP converged on *agent control planes*. Year96 includes those building blocks as providers and
     adds what none of them has: never-closing threads, thoughts as state, learned scope effect, ownership of *why*, and proof-gated completion and evolution (§10).
@@ -232,10 +233,13 @@ flowchart LR
 3. **Scope effect spreads through Ownerships and Duties.** The Scope-Effect Engine scores the change against that snapshot, per identity and per thread, and routes it. It can wake an Ownership or a Duty,
    notify a listener, fill a watchlist, spawn a thought or escalate (§6.3). Each woken identity reads the same snapshot through its own replica (§6.9).
 4. **Tasks are derived.** The woken Ownerships and Duties derive work: why-graph and strategy updates, Duty changes, BuilderRequests, questions to the human and flags (§6.6, §6.7).
-   Every derived task records its `TaskOrigin`, meaning the data, the snapshot cut and the scope prediction it came from (§5). So every turn of the loop can be traced and replayed.
+   Every derived intent records its `TaskOrigin` (§5), whether it is a Duty change, a BuilderRequest, a question or a flag. The origin names the data (several events for a coalesced wake),
+   the snapshot cut it read, including the offsets of any search or graph projections, and its route, either a scope prediction or a deterministic rule such as a human command, a timer or a kernel rule.
+   It also carries the root event and a causal depth, so §6.3's causal caps bound every turn of the loop, not only chains of thoughts. So every turn can be traced and replayed.
 5. **Repeat.** Tasks execute, and their effects, proofs and observations arrive as new data. The loop never stops, just as threads never close.
 
-**The other loops are this loop at different speeds.** Every flow in the catalog (§7.0) is one path through it.
+**The other loops are this loop at different speeds.** Every flow in the catalog (§7.0) is one path through it. Two paths sit outside it by design: genesis (§7.0), which creates the first snapshot,
+and the substrate supervisor's recovery while the kernel is down (§6.13), which restores the loop itself.
 
 1. **The fast loop (seconds to minutes)** is a single turn. A delta arrives, the Scope-Effect Engine routes it, the chosen actor wakes, proposes an intent, the kernel commits it, and the work produces evidence.
 2. **The ownership loop (hours to quarters)** is many turns. Ownerships sense, interpret (update the why-graph), strategize, change Duties, request Builders, verify outcomes and learn.
@@ -296,12 +300,13 @@ interface Capability { resource: Y96Uri; actions: string[]; mode: 'exercise' | '
 interface Intent<C = unknown> { id: string; actor: IdentityId; thread: ThreadId; command: C; deadline: Deadline;
   budget: BudgetReservationRef; why: WhyRef;
   expectedAggregateVersions: Record<Y96Uri, number>;     // optimistic concurrency on every aggregate read or written
-  operation?: OperationEnvelope }                        // REQUIRED when the command has any side effect
+  operation?: OperationEnvelope;                         // REQUIRED when the command has any side effect
+  origin?: TaskOrigin }                                  // REQUIRED on every intent the main flow derives (§4): Duty changes, BuilderRequests, questions, flags
 interface OperationEnvelope {                            // the spec's 5-step protocol, enforced by the kernel for EVERY command
   preState: SnapshotRef; monitorPlan: TelemetryPlan; expectedState: ExpectedEndStateRef;   // internal commands: kernel auto-fills from the command schema
   postState?: SnapshotRef; timeout: Deadline; onDeadline: 'flag-then-retry'|'flag-then-compensate'|'flag-only' }
 type SnapshotRef =                                       // tiered, so every command can afford one
-  | { tier: 'versions'; aggregates: Record<Y96Uri, number> }  // default: a vector of aggregate versions (cheap)
+  | { tier: 'versions'; aggregates: Record<Y96Uri, number>; watermarks?: Record<string, number> }  // default and cheap: aggregate versions, plus the offsets of any projections read (search, graph)
   | { tier: 'subject-cut'; subjects: Y96Uri[]; cut: string }  // proofs
   | { tier: 'world'; snapshot: Y96Uri }                        // replay and eval only (the §6.2 freeze protocol)
 interface EffectRecord { id: string; intent: string; idempotencyKey: string; target: Y96Uri; conflictKey: string;   // per-target ordering
@@ -343,9 +348,10 @@ interface Duty { id: DutyId; ownership: OwnershipId; scope: { domain: string; bo
   knowledge: Y96Uri[]; settings: Record<string, unknown>; processes: Process[]; insightBacklog: Insight[]; slas: Sla[] }
 interface BuilderRequest { id: string; duty: DutyId; thread: ThreadId; goal: string; why: WhyRef; references: Y96Uri[];
   expectedEndState: ExpectedEndStateSpec; proofPolicy: ProofPolicy; capabilities: Capability[]; tools: ToolRef[];
-  environment: EnvironmentSpec; deadline: Deadline; budget: Budget; escalation: EscalationPolicy;
-  origin: TaskOrigin }                                   // the main flow's trace (§4)
-interface TaskOrigin { delta: EventId; cut: SnapshotRef; prediction?: Y96Uri }   // the data, the snapshot it read, the scope prediction that routed it
+  environment: EnvironmentSpec; deadline: Deadline; budget: Budget; escalation: EscalationPolicy }   // travels inside an Intent, which carries its TaskOrigin
+interface TaskOrigin { deltas: EventId[]; cut: SnapshotRef;      // the data (several events for a coalesced wake) and the snapshot it read
+  route: { kind: 'scope-effect'; prediction: Y96Uri } | { kind: 'direct'; rule: string };   // a scope prediction, or a deterministic rule (a human command, a timer, a kernel rule)
+  root: EventId; causalDepth: number }                           // so §6.3's causal caps bound every turn of the loop, not only thoughts
 
 // ---------- relevance, thoughts, feeds (R02, R13) ----------
 interface ScopePrediction { delta: EventId; target: IdentityId | ThreadId; pMatters: number;
@@ -704,7 +710,7 @@ Routes: `ignore | log-for-later | watchlist | notify-listener | wake-hanger | sp
   *maintenance* (revisit dormant hangers and watchlists) and *curiosity* (bounded exploration near high-impact goals). R02 warns that per-identity budgets alone "are not
   sufficient", so the anti-runaway controls are layered:
   (1) **ancestry budgets**: thoughts, clones and child threads draw on their parent's pool under an org-wide ceiling, so spawning more identities never multiplies spend;
-  (2) **causal caps**: a maximum `causalDepth` along the thought → thought chain, and a cap on total work per causal DAG;
+  (2) **causal caps**: a maximum `causalDepth` along every causal chain, including the thought → thought chain and every turn of the main flow (`TaskOrigin.causalDepth`, §4), and a cap on total work per causal DAG;
   (3) **quotas** on outstanding thoughts, clones and threads per Ownership;
   (4) **cycle detection**: the same `(about, mode, trigger)` hash inside a window is suppressed, plus cooldowns;
   (5) **the novelty rule**: *thought-generated state never counts as a "new external predicate"*, so thoughts cannot sustain themselves;
@@ -984,7 +990,8 @@ cannot be met within the agreed time.
 - **Environments come in tiers:** Wasm (Wasmtime, Extism) for deterministic plugins → containers with gVisor (plus **container-use**, Apache-2.0, for per-agent
   branch+container) → Kata/Firecracker microVMs for untrusted code → Playwright browsers → desktop VMs for computer use → **GPU / Windows / macOS build pools**
   (Unreal, Xcode). Kubernetes agent-sandbox (GA on GKE in 2026) provides warm pools and snapshots.
-- **Model gateway:** LiteLLM (MIT core) in the MVP, then Envoy AI Gateway / agentgateway (Apache-2.0) at cluster scale. vLLM/SGLang serve local models. It handles per-identity
+- **Model gateway:** LiteLLM (MIT core) in the MVP, then Envoy AI Gateway / agentgateway (Apache-2.0) at cluster scale. Every model is a hosted API or a subscription (Q5, §8.1), routed across
+  at least two providers so that one outage or one exhausted quota never stops the org. The gateway handles per-identity
   virtual keys, budgets, rate limits, fallbacks and caching, and every call becomes a ledgered, traced activity.
 - **Wake-storm control** is a problem the industry has not solved yet (Google's 2026 Agent Substrate exists because of it). Year96 uses partitioned wake queues,
   dedupe by `(actor, cause)`, per-org token buckets, priority by scope-effect score, jittered timers and coalesced digests.
@@ -1233,7 +1240,7 @@ The definition of done says the system heals itself. Healing is not a separate d
     so a failing configuration can't come back on a timer. Only when the incident closes, and a probe shows the desired state is healthy, does the controller reconcile back to it.
   - **Independent black-box probes** run from outside the cell. Supervisors in different cells heartbeat each other, and an **external dead-man's service** (Healthchecks, BSD-3, or Uptime Kuma push monitors, MIT), hosted off-box and off-cell,
     alerts the human if every supervisor goes silent.
-- **When every model provider is down**, the cascade falls back to the local `solo` models (§8.1). If those are unavailable too, the system enters **no-LLM mode**: deterministic work such as sensors, timers,
+- **When a model provider is down**, the gateway fails over to another approved provider. **When every provider is down**, the system enters **no-LLM mode**: deterministic work such as sensors, timers,
   proofs, scheduled scripts and reconciliation continues, new LLM-dependent work is parked, the human can still steer with deterministic commands (§6.12), and the human is notified.
 - **A poisoned fact is quarantined with everything built on it.** The recorded lineage (§6.2) finds every fact, summary, milestone, decision and proof that was derived from it.
   They are marked `tainted` and re-derived or re-verified, and each affected thread gets a milestone. Effects that were already dispatched from tainted inputs are escalated for compensation.
@@ -1263,8 +1270,9 @@ So the human can upgrade them, control them, or replace them with a representati
     `pausing` until a probe with the old token is denied, and only then is the pause acknowledged. A hold-status hook in its harness also makes it stop cooperatively.
   - Its trusted launcher, not the agent itself, attests the effective harness (model and plugin digests) at session start, and the attestation must match its record. The agent can't edit its own record, and self-updates and self-learned skills are refused.
   - An **unmanaged** agent is recorded but not controlled. Its human controls it directly, and Year96 never attests that it paused or revoked one. Today's outside builder is unmanaged.
-- **Reads leave Year96.** An outside agent's model runs at its own provider, so its reads are treated like a principal channel (§6.5). DLP and `thought-private` redaction apply, and until Q5 is settled
-  its reads carry the `no-private-data` or `summaries-only` restriction. The Observatory shows outside agents with their state.
+- **Reads leave Year96.** An outside agent's model runs at its own provider, so its reads are treated like a principal channel (§6.5). DLP and `thought-private` redaction apply. Q5 is decided (hosted
+  APIs for all state), so its reads are allowed when its model provider is on Year96's approved-provider list (§8.1), and otherwise they carry the `no-private-data` or `summaries-only` restriction.
+  The Observatory shows outside agents with their state.
 - **Builders can't grade themselves.** Neither an outside builder nor the Engineering Ownership can read or write the hidden soak generators, holdouts or gold sets (§6.10, §11). Their author is independent:
   the owner, or a separately sponsored author from a different model family. The bootstrap verifier pins their content hashes, and the owner's everyday credentials can't read them, so an unmanaged builder that runs with the owner's access can't either.
 - **Upgrade.** Changing an outside agent's skills, plugins, model or instructions is a versioned change to its harness record. It is reviewed like an L1 or L2 variant (§6.11), with an eval
@@ -1470,7 +1478,7 @@ can promote itself after the full pipeline, an architecture-level simulation and
 | Sandboxes | Docker + gVisor + container-use (Apache-2.0) | Kata / Firecracker, K8s agent-sandbox | E2B, Modal, Vercel / Cloudflare Sandbox | Daytona (AGPL) |
 | Browser / desktop | Playwright (Apache-2.0) | browser pools, desktop VMs, GPU/Windows/macOS pools | Browserbase, Steel, Kernel | — |
 | Model gateway | LiteLLM (MIT core) | Envoy AI Gateway / agentgateway (Apache-2.0) | Portkey (MIT, trial), OpenRouter | LiteLLM enterprise directory (separate terms) |
-| Inference | frontier APIs; llama.cpp / Ollama (MIT) | vLLM, SGLang (Apache-2.0) | OpenAI, Anthropic, Google, Mistral | — |
+| Inference | hosted APIs and subscriptions through the model gateway (Q5) | the same, routed across several providers | local serving (llama.cpp, Ollama, vLLM, SGLang) as an optional provider only, never required | — |
 | Harness | **pi** (MIT) + `@year96/pi-extensions` | pi RPC workers in pods | OpenHands, Codex CLI, Gemini CLI, Goose, opencode; Claude Code | — |
 | Methodology | pstack → superpowers → mattpocock/skills (MIT) as Agent Skills | same | spec-kit, BMAD (MIT) | Taskmaster (Commons Clause) |
 | Sensors / automation | hermes-agent (MIT) | hermes workers per profile | — | n8n (fair-code), Activepieces/Flowise (custom) |
@@ -1488,31 +1496,35 @@ can promote itself after the full pipeline, an architecture-level simulation and
 | Rollout | OpenFeature (Apache-2.0), git manifests | Argo CD / Flux (Apache-2.0) | LaunchDarkly | — |
 | Voice | Pipecat (BSD-2) | LiveKit Agents (Apache-2.0) | — | — |
 | Ledger scale-out & pooling | one Postgres; PGlite (Apache-2.0) in `sim` | app-level shards by `(org, aggregate_hash)` + PgBouncer (ISC) | YugabyteDB (core Apache-2.0, but its management platform is Polyform: external trial only) | Citus (AGPL-3.0); CockroachDB (use-restricted) |
-| Model serving | llama.cpp, Ollama, Infinity, ONNX Runtime (MIT); sentence-transformers (Apache-2.0) | vLLM, SGLang, text-embeddings-inference (Apache-2.0) | frontier APIs | — |
+| Model serving | none needed: every model is a hosted API or a subscription (Q5, §8.1) | none needed | local serving stacks (llama.cpp, Ollama, Infinity, ONNX Runtime, vLLM, SGLang, text-embeddings-inference) as optional providers | — |
 | Container supply chain | digest pins + local mirror; Syft SBOMs; cosign | Harbor or Zot mirror; Kyverno or Sigstore policy-controller admission (all Apache-2.0) | Docker Hardened Images, Chainguard | Bitnami public images/charts (terms changed 2025) |
 | Ultra-dense sandboxes | — | Kubernetes agent-sandbox warm pools | Agent Substrate (Apache-2.0, watch) | — |
 
-### 8.1 Model profiles: which models the core uses ([R15](research/15-community-models-registries.md))
+### 8.1 Model profiles: hosted APIs and subscriptions only (Q5, decided)
 
-The same provider interfaces run everywhere, and the profile picks the weights. **Every license below was checked against Hugging Face model metadata on 2026-09-28.**
-Frontier APIs remain optional providers.
+**The owner decided that no local model is needed** (Q5). Every model call, for all state including mental models and thoughts, goes through hosted APIs and subscriptions. The model gateway (§6.9)
+holds both kinds of access. pi already authenticates with API keys or with subscription OAuth, and the `SecretProvider` keeps those keys and sessions out of model context.
+Every profile, from `sim` to `fleet`, uses the same routes. Year96 therefore runs no inference GPUs and ships no model weights. The provider interfaces stay, so a local model could be added later as an optional provider, but no profile requires one.
 
-| Role (interface) | `solo` (CPU or one GPU) | `cluster` (GPU pools) | License | Excluded from core |
-|---|---|---|---|---|
-| Embeddings (`EmbeddingProvider`): scope retrieval, dedupe, memory | Qwen3-Embedding-0.6B | Qwen3-Embedding-4B; bge-m3 as a fallback | Apache-2.0; bge-m3 is MIT | — |
-| Reranking (`RerankerProvider`) | bge-reranker-v2-m3 | Qwen3-Reranker-4B | Apache-2.0 | — |
-| Cascade classifiers and routers (`ClassifierProvider`) | ModernBERT-base fine-tunes (ONNX) | same, served through ONNX Runtime | Apache-2.0 | — |
-| Prompt-injection guard (`GuardModelProvider`) | protectai/deberta-v3-base-prompt-injection-v2 | same | Apache-2.0 | Meta Prompt Guard (Llama terms) |
-| PII detection (`GuardModelProvider`) | GLiNER multi-PII v1 + Presidio (MIT) rules | same | Apache-2.0 | ai4privacy v2 fine-tunes (CC-BY-NC-4.0) |
-| Local LLM (`LocalLLMProvider`): adjudicator, fact extraction, sensitive state | Phi-4-mini-instruct or Qwen3-4B (llama.cpp/Ollama) | Qwen3-4B, Mistral-7B-Instruct-v0.3, Granite-4.0-micro, OLMo-2-7B-Instruct (vLLM/SGLang) | MIT / Apache-2.0 | Llama and Gemma families (use-restricted terms) |
-| Visual proof checks (`VisionVerifierProvider`) | Florence-2-base + SmolVLM-500M-Instruct | same; larger VLMs only once their license is verified | MIT / Apache-2.0 | Qwen2.5-VL (no permissive license) |
-| Speech (`SpeechProvider`) | Whisper (small → large-v3) + Kokoro-82M | Whisper-large-v3 + Kokoro-82M / Parler-TTS mini / Dia-1.6B | Apache-2.0 | Piper voices stay external-only until a specific voice and its dataset license are pinned (the Piper repo itself is MIT) |
+| Role (interface) | Default: hosted API or subscription, through the model gateway | Why it matters |
+|---|---|---|
+| Reasoning for every agent role: Ownerships, Duties, Builders, Communicators, verifiers (`ModelProvider`) | Frontier APIs and subscriptions from at least two providers, for example Anthropic, OpenAI and Google. The cheap-first cascade uses their small models for the early stages | Two providers keep one outage or one exhausted quota from stopping the org, and they give verifiers the model-family diversity §6.10 requires |
+| Embeddings (`EmbeddingProvider`): scope retrieval, dedupe, memory | A hosted embeddings API | Re-embedding after a provider change is a projection rebuild (§6.2), so switching is cheap |
+| Reranking (`RerankerProvider`) | A hosted rerank API | Same as above |
+| Cascade classifiers and routers (`ClassifierProvider`) | Small hosted models with structured output | The Scope-Effect Engine's learned ranker is a small online learner, Vowpal Wabbit (BSD-3), trained on Year96's own labels. It is arithmetic over Year96's data, not a downloaded model |
+| Prompt-injection guard (`GuardModelProvider`) | A hosted guard or moderation API | Classifiers only reduce injection risk, and the architectural controls in §6.1 remain the real defence |
+| PII detection (`GuardModelProvider`) | Presidio's pattern recognizers (MIT) run in-process, and model-based detection is a hosted API | Pattern rules need no model |
+| Visual proof checks (`VisionVerifierProvider`) | A hosted vision model | Screenshots are observe-back evidence (§6.10) |
+| Speech (`SpeechProvider`) | Hosted speech-to-text and text-to-speech APIs | The voice keypad (§6.12) still works with every model down |
 
-**Promotion gates.** No model becomes a default without passing the L4 duty's gates (§6.11): (1) the license is re-checked at the pinned revision; (2) the serving image is
-reproducible, with an SBOM and a digest; (3) task evaluations pass (MTEB/MMTEB and BEIR, plus Year96 replay corpora); (4) calibration passes (Brier and log loss, because §6.3's
+**Every provider on the routing list needs approved data terms**: no training on Year96's data, stated retention, and a region that fits residency (§9.5). Sensitive classes route only to providers whose
+terms allow them. **Subscriptions** are used within their plans' limits and terms. The gateway tracks each plan's quota and routes around an exhausted one, and the Security Ownership checks a plan's terms before
+it carries agent traffic (§12, risk 19).
+
+**Promotion gates.** No model becomes a default without passing the L4 duty's gates (§6.11): (1) the provider's terms and data policy are re-checked for the pinned model version; (2) the version is pinned
+wherever the provider allows it, and canary prompts detect silent drift; (3) task evaluations pass (MTEB/MMTEB and BEIR, plus Year96 replay corpora); (4) calibration passes (Brier and log loss, because §6.3's
 `pMatters` depends on it); (5) security evaluations pass (prompt injection, PII leakage, memory poisoning); (6) latency and cost stay within the profile's budget; (7) replay on frozen worlds passes;
-(8) shadow and canary stages pass. Every model call records its model card reference (repo, revision, license) in the ledger. R15 flags two limits. Permissive weights can still hide problematic
-training data, so each model reference carries a `dataConcern` flag and owners can choose stricter profiles. And classifiers only *reduce* injection risk, so the architectural controls in §6.1 remain the real defense.
+(8) shadow and canary stages pass. Every model call records its provider, model and version in the ledger.
 
 ## 9. Deployment and scale: one machine to millions of agents ([R14](research/14-scale-one-machine-to-millions.md), [R15](research/15-community-models-registries.md))
 
@@ -1536,7 +1548,7 @@ modes. For Grafana this is a pattern only, since it is AGPL.
 | Profile | Where it runs | Roles and providers | Used for |
 |---|---|---|---|
 | `sim` | **One process**, no network | In-memory or PGlite (Apache-2.0) ledger, in-process bus and actor host, **virtual clock**, deterministic scheduler, seeded randomness, recorded/mocked models, fake sandboxes | Deterministic simulation testing in the FoundationDB and TigerBeetle style: millions of synthetic dormant agents (compact records), wake storms, fault injection, and exact replay from a seed. It proves *behavior*, not real networking, isolation or model quality (§9.8) |
-| `solo` | **One machine** (laptop, workstation or one VM) | `year96 --roles=all` + Postgres + NATS + Temporal dev server + OpenFGA + LiteLLM + OTel; Docker/gVisor sandboxes; optional local models (§8.1 `solo` profile). **Durability add-ons:** off-box WAL archiving, an escrowed root key (recovery kit) and an external dead-man's service; losing the machine is an assisted restore. **`solo+replica`** adds a second small machine (or a managed replica) and a tiny witness, so machine loss heals itself with zero loss (§6.9) | A person or small org with the full feature set; development |
+| `solo` | **One machine** (laptop, workstation or one VM) | `year96 --roles=all` + Postgres + NATS + Temporal dev server + OpenFGA + LiteLLM + OTel; Docker/gVisor sandboxes; models through hosted APIs and subscriptions (Q5, §8.1). **Durability add-ons:** off-box WAL archiving, an escrowed root key (recovery kit) and an external dead-man's service; losing the machine is an assisted restore. **`solo+replica`** adds a second small machine (or a managed replica) and a tiny witness, so machine loss heals itself with zero loss (§6.9) | A person or small org with the full feature set; development |
 | `cluster` | One Kubernetes cluster = **one cell** | The same binary as separate Deployments (`--roles=kernel`, `actor-host`, `hub`, `scope`, `membrane`, `projector`, `assurance`, `gateway`, `builder-worker`); sharded Postgres, NATS/Kafka, Temporal cluster, Dapr actors, KEDA, sandbox warm pools, GPU pools; Helm | An organization |
 | `fleet` | **Many cells** across clusters and regions | Cell-local stacks plus a thin global control plane (§9.5) | Millions of agents, many orgs, data residency |
 
@@ -1571,7 +1583,7 @@ Every Year96 package follows these rules, so that the same code works in every p
 | Temporal (Builders only) | dev server | Temporal cluster; namespaces and task queues per cell; **worker versioning pins every run to its build id** | workflow id | History is capped at 51,200 events or 50 MB, and `numHistoryShards` is fixed at cluster creation (R14) → size it up front, use continue-as-new, and never use a workflow as a never-ending actor |
 | Authorization | local OpenFGA | HA OpenFGA per cell (SpiceDB as the alternative); cached checks invalidated by revocation epoch | org/resource | Zanzibar precedent: millions of checks/s at p95 < 10 ms (R14) |
 | Scope-effect | local workers | Stream processors per org or cell; ML batch jobs | org/thread/identity | Adjudicator cost → cascade, top-k only, budgets |
-| Model gateway + inference | LiteLLM, optional llama.cpp/Ollama | Envoy AI Gateway + vLLM/SGLang GPU pools + API routes; prefix caching | org/identity/model | GPUs and quota → cheaper models first, caching, admission control |
+| Model gateway + inference | LiteLLM with API and subscription routes | Envoy AI Gateway or agentgateway, routed across several providers; provider prompt caching | org/identity/model | Provider rate limits, quotas and spend → cheaper models first, prompt caching, admission control |
 | pi / sandbox workers | Docker | Warm pools (agent-sandbox), Kata/Firecracker pools per cell; Agent Substrate (Apache-2.0) on watch | org/session | Kubernetes allows ≤ 150k pods per cluster, and GKE allocates ~300 sandboxes/s per cluster (R14) → pools per cell, queued starts, snapshots |
 | Search | Postgres FTS + pgvector | Vespa or Qdrant per cell | org/index shard | Cost → adaptive indexing, cold tiers |
 | World-feed fetchers | hermes jobs on kernel-registered schedules | KEDA-scaled fetchers partitioned by source domain (politeness per domain) | source | Rate limits and ToS → jitter; a shared public mirror where allowed |
@@ -1649,13 +1661,13 @@ flowchart LR
 | Authorization checks | 10 per event | ~200,000 checks/s (sourced: Zanzibar-class systems serve millions per second) |
 | LLM calls | 0.02 calls/s per active session | ~2,000 calls/s |
 | Tokens | 2,000 in + 500 out per call | ~4M prefill + ~1M decode tokens/s |
-| GPUs | if **every** call went to a local 70B model | somewhere between **several hundred and a few thousand H100-class GPUs**, depending on precision, batching, context mix and cache hits. R14's rougher estimate is 2,500–3,400, while separating prefill from decode points toward the lower part of the range. **It must be measured** on the chosen model and hardware, and it drops sharply with small models in the cheap cascade stages, prefix caching and API routing |
+| Inference GPUs | none: models are hosted APIs and subscriptions (Q5) | Year96 runs no inference GPUs. The wall moves to provider rate limits, quotas and spend. About 5M tokens/s needs contracted throughput, such as enterprise tiers or provisioned throughput, spread across several providers. **It must be measured** in the load test, and it drops sharply with cheap models in the early cascade stages and provider prompt caching |
 | Sandboxes | 20% of active sessions hold one | ~20,000 concurrent. This fits under Kubernetes' 150k-pod limit (sourced), but at ~300 allocations/s per cluster (sourced) starting them all at once takes ~70 s, so warm pools and queued starts are needed |
 | Human interruptions | 0.5% of active sessions per hour | ~500 per hour, which is why attention budgets and ranked inboxes exist |
 | Proof capacity | every task is re-executed by at least two verifiers at every level (§6.10) | Verification compute is budgeted at roughly **2–3× Builder compute**, including GPU test pools and game-build matrices. It sits in the reserved capacity class (§6.1) and is part of the load test |
 
 **The conclusion drives the design.** The infrastructure (ledger shards, bus, actors, authorization) scales linearly as cells are added. **Model capacity and money do not.**
-That is why the design has the cheap-first cascade and the ancestry budgets and circuit breaker (§6.3), small local models and prefix caching (§8.1), and admission control that
+That is why the design has the cheap-first cascade and the ancestry budgets and circuit breaker (§6.3), cheap hosted models and provider prompt caching (§8.1), and admission control that
 sheds low-value work first.
 
 ### 9.7 Container supply chain ([R15](research/15-community-models-registries.md))
@@ -1753,7 +1765,7 @@ communication app, sees every active thread, creates their own thread with a Com
 | # | Statement | Acceptance proof |
 |---|---|---|
 | D1 | **Runs by itself** | 30 days under a declared **soak workload**: a mix of desires, world events and injected faults at a stated rate, drawn from hidden generators that the system can't see or tune to, so an idle or overfitted system can't pass. Across those 30 days: zero human *operational* interventions (approvals the human chose to require don't count, and neither does the one assisted restore after plain `solo` loses its only machine, which D3 proves separately); every must-deliver item met its delivery deadline; nothing was parked except under its declared wait policy; and every scheduled Duty and sensor ran on time or, while in safe degraded mode (§6.13), caught up within its declared window. Time spent degraded is scored against a pre-declared cap |
-| D2 | **Works by itself** | Every flow F1–F35 (§7.0) passes as an automated E2E scenario. The scenarios include a varied set of desires sent from chat apps: the vision's examples (a better mental model; an ads campaign in a sandbox account, verified by object creation, review status and budget, because sandbox ads don't deliver; an Unreal game prototype on a GPU build machine), plus a software feature and a research task. At least one Builder runs as a **harness team of a hundred or more member agents** (the research task's fan-out), a Duty runs as a team (a lead, reviewers and supervisors), and the human talks to an Ownership while it is busy in another thread (Q&A). **Every task derived in these scenarios traces back through its `TaskOrigin`** to the data, the snapshot cut and the scope prediction it came from, and replaying that data from that cut derives the same task, which proves the main flow (§4) |
+| D2 | **Works by itself** | Every flow F1–F35 (§7.0) passes as an automated E2E scenario. The scenarios include a varied set of desires sent from chat apps: the vision's examples (a better mental model; an ads campaign in a sandbox account, verified by object creation, review status and budget, because sandbox ads don't deliver; an Unreal game prototype on a GPU build machine), plus a software feature and a research task. At least one Builder runs as a **harness team of a hundred or more member agents** (the research task's fan-out), a Duty runs as a team (a lead, reviewers and supervisors), and the human talks to an Ownership while it is busy in another thread (Q&A). **Every task derived in these scenarios traces back through its `TaskOrigin`**, including Duty changes, questions and flags as well as BuilderRequests, to its data, snapshot cut and route. In the replay harness, with recorded model I/O and no live EffectDispatcher, replaying that data from that cut derives the same task, exact up to permanent redactions. A second test replays an old cut after a live revocation, halt or exhausted budget. The replay reproduces the recorded derivation without dispatching anything, and any live resubmission must pass today's gates. Together these prove the main flow (§4) |
 | D3 | **Heals itself** | Every fault in the chaos catalog is injected into a live canary cell with the production topology (three data nodes in three failure domains) and into `solo`, including faults in the healer's own dependencies and simultaneous faults. Each is detected and remediated within its SLO and gets an incident thread and a proof bundle. **The failure model is per profile** (§6.9). In `cluster` and `fleet`, losing a node, zone or cell's compute loses no acknowledged data and duplicates no effect. In `solo`, crashes, reboots and outages heal autonomously and lose nothing. Losing the only machine can't heal autonomously. It is proven by an **assisted-restore drill** instead, which must lose at most the declared WAL window of internal work, no record of any business effect that may have left the machine, and no crypto-shredding, and must resurrect no revoked authority. The drill includes a receiver outage, a stop sent during it and then machine loss, and checks that the restore pauses every live Commitment, provisional ones included, until the human relaunches it through the normal gates. `solo+replica` heals machine loss autonomously, with nothing lost. Region loss is outside D3 |
 | D4 | **Evolves itself** | A planted beneficial variant is promoted through the full pipeline, including an L6 variant outside the TCB that is promoted with no human. A planted variant that degrades slowly is caught during stabilization, or later by continuous monitoring, and rolled back. **Year96 also finds an improvement nobody planted**: a hidden inefficiency is seeded into the soak workload (not a variant), and the system must discover it, propose its own candidate and show a measured gain. Real variants are promoted only when they beat a pre-registered holdout, every step is in the Improvement Ledger, and eval-of-evals catches every planted flaw |
 | D5 | **The human only gives input** | Across a **channel matrix** covering every advertised channel class (at least two chat apps, email, the web console, and voice where offered), every assurance level and every failure (a channel outage, degraded mode, every model down): messages reach the right thread, judged against a labelled oracle, ambiguous flat-app messages are asked about rather than guessed, and high-risk actions requested over a low-assurance channel get a step-up. The human sees every thread they may read in All Threads, creates a thread with a Communicator, exercises every row of the steering table (halting a live campaign stops its spend, including a launch still in flight and against a delayed earlier write; only `control.resume` lifts a hold; every command returns a receipt of what was stopped, stopping, voided, compensated or irreversible), grants access through the consent flow, controls the system with no LLM (F32, including the voice keypad on an authenticated callback), and opens the Observatory, zooming live from Z0 to Z5 (p95 event-to-pixel under 2 s) and scrubbing back in time |
@@ -1806,14 +1818,17 @@ events, flag-before-retry · (7) pi host + `timeout-wrapper`, `state-capture`, `
 12. **Human UX over thousands of threads.** Handled by the attention budget, ranked inboxes, digests and rehydration briefs. This must be tested with real humans early.
 13. **Consistency across stores and external side effects.** Handled by one serializable authoritative ledger with revocation fences, sagas across aggregates, and an effect ledger whose
     `unknown` outcomes are resolved only by observe-back and reconciliation, never by a blind retry. Exactly-once effects in the outside world remain impossible in general (R05), so the goal is *effectively-once plus reconciliation*.
-14. **Model capacity is the scaling wall, not infrastructure.** 10M logical agents at 1% active means roughly 5M tokens/s (§9.6). This is handled by the cheap-first cascade, small
-    local models, prefix caching, API routing and admission control. Even so, it stays a budget decision as much as an engineering one.
+14. **Model capacity is the scaling wall, not infrastructure.** 10M logical agents at 1% active means roughly 5M tokens/s (§9.6). This is handled by the cheap-first cascade, cheap
+    hosted models, provider prompt caching, routing across several providers and admission control. With no local models (Q5), capacity is bought rather than built: provider rate limits and contracts are the hard ceiling, and it stays a budget decision as much as an engineering one.
 15. **Hot orgs and hot threads.** An org or thread that outgrows a shard or a cell has to be split along Ownership subtrees without breaking its mental model. This is not yet designed in detail (§9.5).
 16. **Container supply chain.** Upstream images can change terms or disappear, as Bitnami's did in 2025. This is handled by digest pinning, a mirror, signatures, SBOMs and rebuild-from-source drills (§9.7).
 17. **Multi-human authority.** Several humans may own one Ownership. Conflicts resolve conservatively (the more restrictive instruction wins), and each intent has a single accountable sponsor.
     Real organizations will still find edge cases, such as a departing owner or disputed authority, that only a human can settle (§6.1).
 18. **Continuing commitments.** Some external obligations outlive the effect that created them, such as subscriptions, running campaigns and cloud resources. Year96 refuses to start one without an enforceable cap,
     reserves its worst case before launch, and can always use the connector's declared spend-halting operations, but a provider that ignores a stop request is outside its control. Observe-back and escalation are the only remedy (§6.1).
+19. **Everything depends on hosted model providers** (Q5). Outages, quota exhaustion, silent model drift and changes to terms or prices are now core risks.
+    They are handled by routing across at least two approved providers, version pinning with canary prompts (§6.11), no-LLM mode when every provider is down (§6.13), and approved data terms for every provider (§8.1).
+    Subscription plans add usage caps and terms that may restrict automated or shared use. The gateway tracks each plan's quota, and the Security Ownership checks a plan's terms before it carries agent traffic.
 
 **Questions only you can answer:**
 
@@ -1828,7 +1843,8 @@ events, flag-before-retry · (7) pi host + `timeout-wrapper`, `state-capture`, `
 - **Q4: Autonomy ceiling.** Which action classes may *ever* be fully autonomous: money, external communications, production deploys, hiring? Related: should the opt-in
   **emergency security track** (§6.11) be enabled? It lets signed security patches to the kernel from the pinned Year96 release signer apply unattended, provided they pass the full suite and a
   differential replay showing no semantic change. The human is told afterwards.
-- **Q5: Model policy.** Are frontier APIs acceptable for all state, or must sensitive state (mental models, thoughts) use local models?
+- **Q5: Model policy. Decided by the owner on 2026-09-29.** No local models. Every model call, for all state including mental models and thoughts, goes through hosted APIs and subscriptions,
+  with approved data terms per provider (§8.1, risk 19).
 - **Q6: Where the human sits in the identity levels.** *Default taken:* the human is **level 0**, the principal above every Ownership and each Ownership's parent. The human reads every thread in their org,
   except `thought-private` content, which follows Q2. Please confirm, or say if you'd rather the human be a peer participant in threads instead.
 - **Q7: "All levels of tests" literally, always?** The spec says a task can never complete without *all* levels passing. This document follows that literally: every level is required,
@@ -1892,7 +1908,7 @@ or by the teammate who owned that report (cited). Where a report disagreed with 
 | BSD | Vowpal Wabbit (BSD-3) · Scrapy (BSD-3) · age (BSD-3) · Healthchecks (BSD-3) · Pipecat (BSD-2) |
 | ISC | libsodium · PgBouncer |
 | PostgreSQL | PostgreSQL (including `pg_receivewal`) · pgvector · pgvectorscale · pg_auto_failover |
-| Model weights (Hugging Face metadata) | **Apache-2.0:** Qwen3-Embedding-0.6B/4B · Qwen3-Reranker-4B · bge-reranker-v2-m3 · ModernBERT-base · protectai prompt-injection v2 · GLiNER multi-PII v1 · Qwen3-4B · Mistral-7B-Instruct-v0.3 · Granite-4.0-micro · OLMo-2-7B-Instruct · SmolVLM-500M-Instruct · Whisper-large-v3 · Kokoro-82M · Parler-TTS mini v1 · Dia-1.6B. **MIT:** bge-m3 · Phi-4-mini-instruct · Florence-2-base · piper-voices (repo level; check each voice) |
+| Model weights (Hugging Face metadata), optional only since Q5 | **Apache-2.0:** Qwen3-Embedding-0.6B/4B · Qwen3-Reranker-4B · bge-reranker-v2-m3 · ModernBERT-base · protectai prompt-injection v2 · GLiNER multi-PII v1 · Qwen3-4B · Mistral-7B-Instruct-v0.3 · Granite-4.0-micro · OLMo-2-7B-Instruct · SmolVLM-500M-Instruct · Whisper-large-v3 · Kokoro-82M · Parler-TTS mini v1 · Dia-1.6B. **MIT:** bge-m3 · Phi-4-mini-instruct · Florence-2-base · piper-voices (repo level; check each voice). No profile uses them, and they stay here in case a local provider is ever added |
 
 About half of these licenses were read directly by the lead during synthesis: the model weights, the supply-chain and serving tools, PgBouncer, the HA and liveness tools (Patroni, etcd, pg_auto_failover, Healthchecks, Uptime Kuma) and most infrastructure. The rest were read by the teammate who owned
 that report and are cited there (for example R05 for Temporal/Dapr/LiteLLM, R06 for OpenFGA/Cedar/OPA/SPIRE/Biscuit, R08 for DSPy/GEPA/Argo/Flux/OpenFeature, R09 for
@@ -1925,7 +1941,7 @@ This is an architecture, so nothing is implemented yet. "Designed" means the mec
 | 15 | Duty agents launch executors with well-defined context (why, task, references, detailed goal) | §6.7 `BuilderRequest` contract | ✅ |
 | 16 | hermes-agent runs repetitive automations and monitored ongoing processes | §6.8 (Sensor identities, `SensorJobSpec` bridge); §6.9 scheduling | ✅ |
 | 17 | Programmatic gates at every level: harness, task, environment, coding, messaging | §6.1 single write path, with every enforcement point listed in the signed TCB manifest; §6.8 pi extensions and the hermes locked profile; §6.5 talk, egress and tool-manifest gates; §6.12 channel DLP; §6.9 sandboxes; §6.10 proof gate; §9.7 image admission; §11 ticket 1 license gate | ✅ |
-| 18 | Use the repo github.com/MenachemBarak/year96 | §9.9 repository layout | ⏸ the repo is still empty and nothing has been pushed |
+| 18 | Use the repo github.com/MenachemBarak/year96 | §9.9 repository layout. The design lives there, tagged `arch-v0.7` onward, and `AGENTS.md` holds the builder's harness record (§6.14) | ✅ |
 | 19 | Use GitHub Project 3 for management | §11, the first 13 tickets | ⏸ the tickets have not been created |
 | 20 | pi.dev as the base harness | §6.8 (extend it; fork only if a conformance test fails; other execution agents run as tools inside pi) | ✅ |
 | 21 | pstack first, then superpowers, then mattpocock/skills | §6.8 methodology precedence and role-to-skill mapping | ✅ |

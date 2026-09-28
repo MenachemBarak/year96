@@ -265,4 +265,25 @@ v0.11 makes this the organizing loop of the architecture. §4's "The main flow" 
 
 ## Round 9 (v0.11): verification
 
+| Aspect | gpt-6-sol | gpt-6-astra | claude-opus-5.5 |
+|---|---|---|---|
+| **A1 Flows and buildability** | **YES** | *pending* | **YES** |
+| **A2 Autonomy, safety and resilience** | **YES** | **YES** | **YES** |
+| **A3 Human experience, fidelity and DoD** | **NO**: 1 blocker | **YES** | **YES** |
+
+The state-table item was confirmed resolved, and every reviewer judged the main flow faithful to the Q&A, consistent with the contracts and safe. The one blocking review asked for the origin record to cover every derived task, and five passing reviews raised the same point as non-blocking.
+
+### How v0.12 resolves it, and the owner's Q5 decision
+
+| # | Theme (raised by) | Resolution in v0.12 | Where |
+|---|---|---|---|
+| R1 | `TaskOrigin` covered only BuilderRequests and one event, and its route was optional (Sol A3; Opus A1, A3; Sol A1, A2; Astra A3) | `origin` now sits on every derived intent: Duty changes, BuilderRequests, questions and flags. It lists several source events for coalesced wakes, and its route is always named, either a scope prediction or a deterministic rule | §4, §5 |
+| R2 | Replay was underspecified (Opus A2, A3; Sol A2; Astra A2) | D2 replays in the harness with recorded model I/O and no live EffectDispatcher, exact up to permanent redactions. A second test replays an old cut after a live revocation, halt or exhausted budget, and a live resubmission must pass today's gates | D2 |
+| R3 | The loop's cycles weren't covered by the causal caps (Opus A2) | `TaskOrigin` carries the root event and a causal depth, so §6.3's caps bound every turn of the main flow, not only thoughts | §4, §5, §6.3 |
+| R4 | Snapshot pins and exceptional paths (Sol A3, Sol A1) | The cheap `versions` snapshot also pins the offsets of the projections it read. Genesis and kernel-down supervisor recovery are named as the two paths outside the main flow | §4, §5 |
+
+**The owner decided Q5**: no local models, and every model call goes through hosted APIs and subscriptions. §8.1 was rewritten around hosted providers with approved data terms, routed across at least two of them. §6.9, §6.13, §6.14 and the §8, §9 and §12 tables follow it, and a new risk 19 covers provider dependence and subscription terms.
+
+## Round 10 (v0.12): verification
+
 *This section is filled in as the nine reviews come back.*
