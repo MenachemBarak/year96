@@ -1,6 +1,6 @@
 # Year96: Technical Architecture (how the system might look in 2027)
 
-> **Status:** v0.12, 2026-09-29. Synthesized by the Year96 "Owner" (Copilot CLI) from a 15-teammate research sprint, then revised after independent reviews
+> **Status:** v0.13, 2026-09-29. Synthesized by the Year96 "Owner" (Copilot CLI) from a 15-teammate research sprint, then revised after independent reviews
 > and multi-model final review rounds (see [research/16-final-review-log.md](research/16-final-review-log.md)). v0.3 added the spec's **Code** requirement (one machine → millions of agents, §9), the core **model profiles** (§8.1),
 > and a **spec compliance matrix** ([Appendix C](#appendix-c-spec-compliance-matrix)). v0.4 added the Vision's definition of done (§6.12, §6.13, §7.0, §11). v0.5 resolved the
 > nine-review Round 2 (every model × every aspect). Its main additions are the dispatch protocol, commitments, the control epoch, per-profile disaster recovery, multi-human authority and the TCB manifest.
@@ -14,6 +14,8 @@
 > v0.11 resolves Round 8 (a way back from `paused`, and authority before liability in a takeover) and adds the Q&A's sixth answer, **the main flow**: data comes in, a state snapshot is created,
 > the scope effect spreads through Ownerships and Duties, tasks are derived, and the loop repeats (§4). Every derived task records its origin.
 > v0.12 resolves Round 9 (an origin record on every derived intent, with its route, root and causal depth) and applies the owner's decision on **Q5**: no local models, only hosted APIs and subscriptions (§8.1).
+> v0.13 applies the owner's one exception to Q5 (small learned rankers trained in-process on Year96's own data), makes the input screen fail closed, keeps verifier diversity when a provider is lost,
+> and charges every parent chain of a multi-source task.
 > **Companions:** [YEAR96_INTRO.md](YEAR96_INTRO.md) (concepts), [YEAR96_SPEC.md](YEAR96_SPEC.md) (engineering rules),
 > [YEAR96_Vision.md](YEAR96_Vision.md) (end-to-end vision), and the owner's Q&A (`YEAR96_Q&A.md`, kept beside the repository folder). **Evidence:** [research/](research/README.md) holds reports 01–15 with maturity data, sources
 > and license checks. Every *core default* named in this document had its **project** license checked against its LICENSE file or model card (see [Appendix B](#appendix-b-license-verification-ledger)).
@@ -67,7 +69,7 @@ It runs one **main flow**, like any app in the world (Q&A). Data comes in, a sta
     or `fleet` (many cells across regions). Topology is configuration, never code, and every package obeys an enforced *deployability contract*. Millions of agents are mostly
     dormant virtual actors: rows, not pods. At 10M logical agents with 1% active, the real limits are model tokens (~5M/s), sandboxes and human attention (§9). On one machine the stack is Postgres,
     NATS, Temporal (for Builders), OpenFGA/Cedar, LiteLLM and OTel. At scale it is sharded Postgres ledgers, Kafka, Vespa, Feldera/RisingWave, Dapr, Envoy AI Gateway and Kata/Firecracker, organized in cells.
-    **Every core default is permissively licensed, and every license was checked.** The owner decided that models are hosted APIs and subscriptions only (Q5), so the core runs no local model weights and no inference GPUs (§8.1). More than 30 popular projects and models were
+    **Every core default is permissively licensed, and every license was checked.** The owner decided that models are hosted APIs and subscriptions only (Q5), so the core runs no local foundation models and no inference GPUs (§8.1). More than 30 popular projects and models were
     excluded from the core or kept as isolated integrations because of their licenses (§8, Appendix B).
 12. **Positioning.** Microsoft, Google, AWS, ServiceNow, Workday, Salesforce and SAP converged on *agent control planes*. Year96 includes those building blocks as providers and
     adds what none of them has: never-closing threads, thoughts as state, learned scope effect, ownership of *why*, and proof-gated completion and evolution (§10).
@@ -235,7 +237,7 @@ flowchart LR
 4. **Tasks are derived.** The woken Ownerships and Duties derive work: why-graph and strategy updates, Duty changes, BuilderRequests, questions to the human and flags (§6.6, §6.7).
    Every derived intent records its `TaskOrigin` (§5), whether it is a Duty change, a BuilderRequest, a question or a flag. The origin names the data (several events for a coalesced wake),
    the snapshot cut it read, including the offsets of any search or graph projections, and its route, either a scope prediction or a deterministic rule such as a human command, a timer or a kernel rule.
-   It also carries the root event and a causal depth, so §6.3's causal caps bound every turn of the loop, not only chains of thoughts. So every turn can be traced and replayed.
+   It also carries the root events of every parent chain and a causal depth, the deepest parent's plus one, and each parent chain's work budget is charged. So §6.3's causal caps bound every turn of the loop, not only chains of thoughts, and every turn can be traced and replayed.
 5. **Repeat.** Tasks execute, and their effects, proofs and observations arrive as new data. The loop never stops, just as threads never close.
 
 **The other loops are this loop at different speeds.** Every flow in the catalog (§7.0) is one path through it. Two paths sit outside it by design: genesis (§7.0), which creates the first snapshot,
@@ -351,7 +353,7 @@ interface BuilderRequest { id: string; duty: DutyId; thread: ThreadId; goal: str
   environment: EnvironmentSpec; deadline: Deadline; budget: Budget; escalation: EscalationPolicy }   // travels inside an Intent, which carries its TaskOrigin
 interface TaskOrigin { deltas: EventId[]; cut: SnapshotRef;      // the data (several events for a coalesced wake) and the snapshot it read
   route: { kind: 'scope-effect'; prediction: Y96Uri } | { kind: 'direct'; rule: string };   // a scope prediction, or a deterministic rule (a human command, a timer, a kernel rule)
-  root: EventId; causalDepth: number }                           // so §6.3's causal caps bound every turn of the loop, not only thoughts
+  roots: EventId[]; causalDepth: number }                        // every parent chain is charged; depth is the deepest parent's plus one (§6.3)
 
 // ---------- relevance, thoughts, feeds (R02, R13) ----------
 interface ScopePrediction { delta: EventId; target: IdentityId | ThreadId; pMatters: number;
@@ -652,6 +654,7 @@ EGRESS   internal intent ─► kernel gates (§6.1) ─► effect ledger ─►
   **Subscriptions, filters, watchlists and relevance links are always confidential internal state**, because they reveal strategy. They never leave the org partition,
   and fetches for sensitive subscriptions can go through privacy-preserving proxies.
 - **Feeds are hostile input.** Every item passes PII and prompt-injection screening before any LLM sees it and is handled as *data, never authority* (§6.1 CaMeL split).
+  The guards are hosted (Q5) and routed across at least two providers. If every guard route is down, the membrane fails closed: unscreened items wait in quarantine, seen only by the quarantined data-only reader, until they are screened.
   Webhooks are signature-verified and replay-protected. Clustering uses SimHash/MinHash plus embeddings plus entity/time overlap, so ten articles copied from the same wire story
   produce *one* internalization. Year96's **own** outbound messages that come back through feeds (for example our own post quoted in the news) are recognized by their reply keys or content hash
   and are not counted as new world state.
@@ -1092,7 +1095,8 @@ Grafana/Loki (AGPL), Vector and Hypothesis (MPL-2.0).
   disabling a feature flag), and the system holds. **If the human has opted in** (Q4), the human can also pre-authorize a narrow **emergency security track**:
   signed security patches from the pinned Year96 release signer that pass the full suite and a *differential replay* showing no semantic change may apply unattended, and the human is told afterwards.
 - **Hosted models drift behind stable names.** Model versions are pinned wherever providers allow it. Canary prompts detect silent drift. An emergency fallback model still passes a
-  fast-path L4 gate and recalibration, and fallback plans must preserve **model-family diversity** for high-risk verification (§6.10).
+  fast-path L4 gate and recalibration, and fallback plans must preserve **model-family diversity** for high-risk verification (§6.10). If losing a provider leaves only one eligible model family,
+  high-risk attestations wait as a declared degraded wait instead of proceeding, and two instances of one family never count as two verifiers.
 
 ### 6.12 The human experience: talk anywhere, see every thread, watch the whole system live ([R04](research/04-communication-hub.md), [R10](research/10-fortune100-frontier-labs.md), [R12](research/12-github-trending-oss-agentic-os.md))
 
@@ -1478,7 +1482,7 @@ can promote itself after the full pipeline, an architecture-level simulation and
 | Sandboxes | Docker + gVisor + container-use (Apache-2.0) | Kata / Firecracker, K8s agent-sandbox | E2B, Modal, Vercel / Cloudflare Sandbox | Daytona (AGPL) |
 | Browser / desktop | Playwright (Apache-2.0) | browser pools, desktop VMs, GPU/Windows/macOS pools | Browserbase, Steel, Kernel | — |
 | Model gateway | LiteLLM (MIT core) | Envoy AI Gateway / agentgateway (Apache-2.0) | Portkey (MIT, trial), OpenRouter | LiteLLM enterprise directory (separate terms) |
-| Inference | hosted APIs and subscriptions through the model gateway (Q5) | the same, routed across several providers | local serving (llama.cpp, Ollama, vLLM, SGLang) as an optional provider only, never required | — |
+| Inference | hosted APIs and subscriptions through the model gateway (Q5) | the same, routed across several providers | local serving (llama.cpp, Ollama, vLLM, SGLang) is unavailable under the current Q5 policy | — |
 | Harness | **pi** (MIT) + `@year96/pi-extensions` | pi RPC workers in pods | OpenHands, Codex CLI, Gemini CLI, Goose, opencode; Claude Code | — |
 | Methodology | pstack → superpowers → mattpocock/skills (MIT) as Agent Skills | same | spec-kit, BMAD (MIT) | Taskmaster (Commons Clause) |
 | Sensors / automation | hermes-agent (MIT) | hermes workers per profile | — | n8n (fair-code), Activepieces/Flowise (custom) |
@@ -1496,7 +1500,7 @@ can promote itself after the full pipeline, an architecture-level simulation and
 | Rollout | OpenFeature (Apache-2.0), git manifests | Argo CD / Flux (Apache-2.0) | LaunchDarkly | — |
 | Voice | Pipecat (BSD-2) | LiveKit Agents (Apache-2.0) | — | — |
 | Ledger scale-out & pooling | one Postgres; PGlite (Apache-2.0) in `sim` | app-level shards by `(org, aggregate_hash)` + PgBouncer (ISC) | YugabyteDB (core Apache-2.0, but its management platform is Polyform: external trial only) | Citus (AGPL-3.0); CockroachDB (use-restricted) |
-| Model serving | none needed: every model is a hosted API or a subscription (Q5, §8.1) | none needed | local serving stacks (llama.cpp, Ollama, Infinity, ONNX Runtime, vLLM, SGLang, text-embeddings-inference) as optional providers | — |
+| Model serving | none needed: every model is a hosted API or a subscription (Q5, §8.1) | none needed | local serving stacks (llama.cpp, Ollama, Infinity, ONNX Runtime, vLLM, SGLang, text-embeddings-inference) are unavailable under the current Q5 policy | — |
 | Container supply chain | digest pins + local mirror; Syft SBOMs; cosign | Harbor or Zot mirror; Kyverno or Sigstore policy-controller admission (all Apache-2.0) | Docker Hardened Images, Chainguard | Bitnami public images/charts (terms changed 2025) |
 | Ultra-dense sandboxes | — | Kubernetes agent-sandbox warm pools | Agent Substrate (Apache-2.0, watch) | — |
 
@@ -1504,14 +1508,16 @@ can promote itself after the full pipeline, an architecture-level simulation and
 
 **The owner decided that no local model is needed** (Q5). Every model call, for all state including mental models and thoughts, goes through hosted APIs and subscriptions. The model gateway (§6.9)
 holds both kinds of access. pi already authenticates with API keys or with subscription OAuth, and the `SecretProvider` keeps those keys and sessions out of model context.
-Every profile, from `sim` to `fleet`, uses the same routes. Year96 therefore runs no inference GPUs and ships no model weights. The provider interfaces stay, so a local model could be added later as an optional provider, but no profile requires one.
+`solo`, `cluster` and `fleet` use the same hosted routes. `sim` and the replay harness use recorded or mocked providers behind the same gateway interface, so their runs stay deterministic and offline.
+Year96 therefore runs no inference GPUs and ships no model weights. **The owner allowed one exception on 2026-09-29.** Q5 rules out local foundation and LLM models, but small learned rankers trained in-process on Year96's own data may run locally.
+Today there is exactly one: the Scope-Effect Engine's ranker. Local serving stacks for foundation models are unavailable under this policy, although the provider interfaces would allow one if the owner ever changes Q5.
 
 | Role (interface) | Default: hosted API or subscription, through the model gateway | Why it matters |
 |---|---|---|
 | Reasoning for every agent role: Ownerships, Duties, Builders, Communicators, verifiers (`ModelProvider`) | Frontier APIs and subscriptions from at least two providers, for example Anthropic, OpenAI and Google. The cheap-first cascade uses their small models for the early stages | Two providers keep one outage or one exhausted quota from stopping the org, and they give verifiers the model-family diversity §6.10 requires |
 | Embeddings (`EmbeddingProvider`): scope retrieval, dedupe, memory | A hosted embeddings API | Re-embedding after a provider change is a projection rebuild (§6.2), so switching is cheap |
 | Reranking (`RerankerProvider`) | A hosted rerank API | Same as above |
-| Cascade classifiers and routers (`ClassifierProvider`) | Small hosted models with structured output | The Scope-Effect Engine's learned ranker is a small online learner, Vowpal Wabbit (BSD-3), trained on Year96's own labels. It is arithmetic over Year96's data, not a downloaded model |
+| Cascade classifiers and routers (`ClassifierProvider`) | Small hosted models with structured output | The Scope-Effect Engine's learned ranker is the owner's one allowed exception: a small online learner, Vowpal Wabbit (BSD-3), trained in-process on Year96's own feedback. It scores many candidates per event, so hosting it would add cost and latency to every wake |
 | Prompt-injection guard (`GuardModelProvider`) | A hosted guard or moderation API | Classifiers only reduce injection risk, and the architectural controls in §6.1 remain the real defence |
 | PII detection (`GuardModelProvider`) | Presidio's pattern recognizers (MIT) run in-process, and model-based detection is a hosted API | Pattern rules need no model |
 | Visual proof checks (`VisionVerifierProvider`) | A hosted vision model | Screenshots are observe-back evidence (§6.10) |
@@ -1605,7 +1611,7 @@ flowchart LR
   subgraph C1["Cell EU-1: org set A"]
     K1["kernel ×N"] --> L1[("ledger shards")]
     A1["actor hosts"] --> B1["NATS / Kafka"]
-    W1["Temporal + pi sandbox pools"] --> M1["model gateway + GPU pool"]
+    W1["Temporal + pi sandbox pools"] --> M1["model gateway (hosted APIs) + build pools"]
   end
   subgraph C2["Cell EU-2: org set B"]
     K2["kernel ×N"] --> L2[("ledger shards")]
@@ -1843,10 +1849,10 @@ events, flag-before-retry · (7) pi host + `timeout-wrapper`, `state-capture`, `
 - **Q4: Autonomy ceiling.** Which action classes may *ever* be fully autonomous: money, external communications, production deploys, hiring? Related: should the opt-in
   **emergency security track** (§6.11) be enabled? It lets signed security patches to the kernel from the pinned Year96 release signer apply unattended, provided they pass the full suite and a
   differential replay showing no semantic change. The human is told afterwards.
-- **Q5: Model policy. Decided by the owner on 2026-09-29.** No local models. Every model call, for all state including mental models and thoughts, goes through hosted APIs and subscriptions,
-  with approved data terms per provider (§8.1, risk 19).
+- **Q5: Model policy. Decided by the owner on 2026-09-29.** No local foundation or LLM models. Every model call, for all state including mental models and thoughts, goes through hosted APIs and subscriptions,
+  with approved data terms per provider (§8.1, risk 19). The one allowed exception is small learned rankers trained in-process on Year96's own data, today only the Scope-Effect Engine's ranker.
 - **Q6: Where the human sits in the identity levels.** *Default taken:* the human is **level 0**, the principal above every Ownership and each Ownership's parent. The human reads every thread in their org,
-  except `thought-private` content, which follows Q2. Please confirm, or say if you'd rather the human be a peer participant in threads instead.
+  except `thought-private` content, which follows Q2, and the sealed evaluation material (§6.14). Please confirm, or say if you'd rather the human be a peer participant in threads instead.
 - **Q7: "All levels of tests" literally, always?** The spec says a task can never complete without *all* levels passing. This document follows that literally: every level is required,
   cost is controlled by suite depth rather than by skipping levels, and there is no waiver. Should trivial changes (a typo in a doc, a colour change) still run the full set of levels, or
   do you want an exemption mechanism for some classes of change?

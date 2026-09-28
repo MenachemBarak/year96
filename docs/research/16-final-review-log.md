@@ -286,4 +286,24 @@ The state-table item was confirmed resolved, and every reviewer judged the main 
 
 ## Round 10 (v0.12): verification
 
+| Aspect | gpt-6-sol | gpt-6-astra | claude-opus-5.5 |
+|---|---|---|---|
+| **A1 Flows and buildability** | **YES** | *pending* | **YES** |
+| **A2 Autonomy, safety and resilience** | **YES** | **YES** | **YES** |
+| **A3 Human experience, fidelity and DoD** | **NO**: 1 blocker | **YES** | **YES** |
+
+Every reviewer confirmed the Round-9 origin fix, and found that the Q5 change keeps verifier diversity, no-LLM mode, D3 with every provider down, capacity, privacy and sealed evaluations intact.
+The one blocking review, with three passing ones agreeing, found that the Scope-Effect Engine's in-process ranker contradicted the Q5 wording "no local models". That was the owner's call to make.
+
+### How v0.13 resolves it
+
+| # | Theme (raised by) | Resolution in v0.13 | Where |
+|---|---|---|---|
+| S1 | The in-process ranker vs Q5 (Sol A3; Sol A1, A2; Astra A3) | **Owner decision, 2026-09-29.** Q5 rules out local foundation and LLM models. Small learned rankers trained in-process on Year96's own data are allowed, and today the Scope-Effect Engine's ranker is the only one. Local serving stacks for foundation models are marked unavailable | §1, §8, §8.1, §12 |
+| S2 | Hosted guards can fail (Opus A1, A2) | The membrane fails closed: unscreened items wait in quarantine until the guards, routed across two providers, are back | §6.2.1 |
+| S3 | Losing a provider can leave one model family (Opus A2, Astra A2) | High-risk attestations then wait as a declared degraded wait, and two instances of one family never count as two verifiers | §6.11 |
+| S4 | Smaller items (Opus A1, A3; Astra A2; Sol A1) | `sim` and the replay harness use recorded or mocked providers behind the same gateway. The §9.5 diagram no longer shows an inference GPU pool. Q6 names the sealed-eval exception. `TaskOrigin.roots[]` charges every parent chain, and depth is the deepest parent's plus one | §4, §5, §8.1, §9.5, §12 |
+
+## Round 11 (v0.13): verification
+
 *This section is filled in as the nine reviews come back.*
