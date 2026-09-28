@@ -3,6 +3,9 @@
 Agents that build or operate Year96 from outside are part of its state (`docs/YEAR96_TECHNICAL_ARCHITECTURE.md` §6.14). This file is their versioned harness record.
 The owner upgrades, controls or replaces them by changing it.
 
+**Today's outside builder is unmanaged** in §6.14's terms. This file records it, but nothing enforces it yet: the owner controls the builder directly. Year96 will manage outside agents only once they act through
+credentials it issues and revokes, with gated writes and an attested harness.
+
 ## Methodology precedence
 
 When two skills disagree, the higher rule wins.

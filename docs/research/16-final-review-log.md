@@ -205,4 +205,22 @@ New flow F35 proves it in Phase 4, where a Year96 Engineering Ownership takes ov
 
 ## Round 6 (v0.8): verification
 
+| Aspect | gpt-6-sol | gpt-6-astra | claude-opus-5.5 |
+|---|---|---|---|
+| **A1 Flows and buildability** | **NO**: 1 blocker | **YES** | **YES** |
+| **A2 Autonomy, safety and resilience** | **NO**: 2 blockers | **YES** | **YES** |
+| **A3 Human experience, fidelity and DoD** | **NO**: 2 blockers | **YES** | **YES** |
+
+Every Round-5 blocker was confirmed resolved. Six of the nine reviews passed. The three blocking reviews and five of the passing ones raised the same two gaps, both in the new §6.14.
+
+### Consolidated themes and how v0.9 resolves them
+
+| # | Theme (raised by) | Resolution in v0.9 | Where |
+|---|---|---|---|
+| Z1 | Registering an outside agent doesn't control it. It keeps its own credentials, so a pause or revocation can't stop it (Sol A1, A2, A3; Opus A1, A2, A3; Astra A2, A3) | Control is enforced where writes land. A **managed** agent acts only through short-lived credentials that Year96 issues and revokes, lands writes on protected branches that require Year96's proof check, calls tools and models through the gateways, and attests its harness at session start. An **unmanaged** agent is recorded but Year96 never claims to control it, and today's builder is unmanaged. F35's proof keeps the old session running and checks denial at every boundary. D6 gains the case | §6.14, F35, D6, `AGENTS.md` |
+| Z2 | The handover saga starts from an Ownership, not an outside agent (Sol A2, A3; Opus A1) | Outside agents get their own lifecycle and fenced takeover saga. The saga pauses the agent, drains its sessions while the sponsor keeps stop authority, maps its `exercise` grants to `delegate` rights for the successor's Duties, carries holds over and verifies that old credentials are dead before retiring it | §6.14 |
+| Z3 | Smaller items (many) | The `external-agent` level and parent. Outside reads treated as leaving the org. Builders sealed from hidden evals. The corrected rule for lifting agent holds (an ancestor's hold binds, and no agent steers its own task). The cancel-compensation exception. The `solo` restore relaunch wording, now covering provisional launches. `AGENTS.md` wording in §6.8 and §9.9. An explicit allowlist for Builder forks | §6.1, §6.8, §6.9, §6.12, §6.14, §9.9, D3 |
+
+## Round 7 (v0.9): verification
+
 *This section is filled in as the nine reviews come back.*
