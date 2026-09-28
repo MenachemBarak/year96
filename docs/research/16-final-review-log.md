@@ -179,4 +179,30 @@ Between Rounds 4 and 5 the owner added `YEAR96_Q&A.md`, which answers four desig
 
 ## Round 5 (v0.7): verification
 
+| Aspect | gpt-6-sol | gpt-6-astra | claude-opus-5.5 |
+|---|---|---|---|
+| **A1 Flows and buildability** | **NO**: 1 blocker | **NO**: 1 blocker | **YES** |
+| **A2 Autonomy, safety and resilience** | **NO**: 1 blocker | **NO**: 1 blocker | **NO**: 1 blocker |
+| **A3 Human experience, fidelity and DoD** | **NO**: 2 blockers | **NO**: 1 blocker | **YES** |
+
+Every Round-4 blocker was confirmed resolved, and every model judged the Q&A integration faithful and buildable. Five of the nine reviews independently found the same new gap.
+
+### Consolidated themes and how v0.8 resolves them
+
+| # | Theme (raised by) | Resolution in v0.8 | Where |
+|---|---|---|---|
+| Y1 | In `solo`, a stop sent with an asynchronous marker during a receiver outage could lose its record on machine loss, which D3 forbade (Sol A1, Sol A2, Astra A1, A2, A3) | Declared honestly. Business effects keep zero record loss. Control-lane records may be lost, so an assisted `solo` restore pauses every live Commitment and asks the human to resume each one. The restore drill covers receiver outage, then a stop, then machine loss | §6.1, §6.9, D3, Phase 3 |
+| Y2 | A Duty's pause, cancel and amend had no contract, because steering was defined for humans only (Sol A3; Opus A1, A2, A3; Astra A1, A3) | **Agent steering** inside the agent's own subtree, authorized by ReBAC. An agent lifts only holds it or its ancestors set, never a human hold. An agent's cancel carries no human-override effects. `halt` stays with humans and the kernel. Guidance is bound to its spec version and epoch, and signals reach pi through an ordered, acknowledged relay | §5, §6.7, §6.8, §6.12, F33 |
+| Y3 | Replicas could carry one human's private context or untrusted content into another thread (Sol A3; Opus A1, A2, A3; Sol A2) | Sibling pushes go through the ContextAssembler under the receiving thread's read rights, with labels and taint kept. A replica slot is reserved for the human. Identity state is fine-grained, with a re-plan cap. Builder forks are kernel-enforced read-only and charged to the asker | §6.9, F34, D6 |
+| Y4 | A hold bound only its own subtree, so a supervising Duty or a sibling replica could restart halted work (Opus A2) | **A hold binds goals and targets.** The kernel refuses new BuilderRequests, launches and work-lane writes whose `why`, `conflictKey` or Commitment belongs to the held subtree, from any thread or replica. A human halt suspends matching standing mandates | §6.12, D6 |
+| Y5 | Smaller items (many) | §9.5 now matches the 15-minute lease and the continuing control lane. Every *agent* identity is a harness. Harness members are child identities (INTRO). D2's 100-member team is a Builder, and a Duty runs as a team | §2, §3, §6.8, §9.5, D2 |
+
+### New owner input: the Q&A's fifth answer
+
+The owner added a fifth answer: the reader of the Q&A is part of the state, so the owner may upgrade it, control it, or replace it with a representative Ownership.
+v0.8 designs this in. Tenet 10 now covers outside agents, and §5 adds an `external-agent` identity kind. New §6.14 gives every outside agent a versioned harness record, upgrades it as an evaluated variant, steers it like any identity, and replaces it with a representative Ownership through the handover saga.
+New flow F35 proves it in Phase 4, where a Year96 Engineering Ownership takes over building Year96. Today's harness record is the repository's `AGENTS.md`.
+
+## Round 6 (v0.8): verification
+
 *This section is filled in as the nine reviews come back.*

@@ -13,6 +13,8 @@ Example:
 
 - human wants to build ureal engine game 
 
+- Human say "we need any ownership to have somene that reponsible to scrape the network for new improvments to the underlines for improvments."
+
 - etc. the rest. 100% handle by ownerships that will yield thoughesds of endless agents processes, that just take care of buidling and improving, just like a real ownerships.
 
 ## The human experience (definition of done)
