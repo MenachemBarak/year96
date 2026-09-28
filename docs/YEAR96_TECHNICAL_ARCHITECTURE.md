@@ -1,6 +1,6 @@
 # Year96: Technical Architecture (how the system might look in 2027)
 
-> **Status:** v0.13, 2026-09-29. Synthesized by the Year96 "Owner" (Copilot CLI) from a 15-teammate research sprint, then revised after independent reviews
+> **Status:** v0.13, 2026-09-29. **Review complete: in Round 11, all nine reviews (three models × three aspects) approved this version.** Synthesized by the Year96 "Owner" (Copilot CLI) from a 15-teammate research sprint, then revised after independent reviews
 > and multi-model final review rounds (see [research/16-final-review-log.md](research/16-final-review-log.md)). v0.3 added the spec's **Code** requirement (one machine → millions of agents, §9), the core **model profiles** (§8.1),
 > and a **spec compliance matrix** ([Appendix C](#appendix-c-spec-compliance-matrix)). v0.4 added the Vision's definition of done (§6.12, §6.13, §7.0, §11). v0.5 resolved the
 > nine-review Round 2 (every model × every aspect). Its main additions are the dispatch protocol, commitments, the control epoch, per-profile disaster recovery, multi-human authority and the TCB manifest.
@@ -1966,7 +1966,7 @@ This is an architecture, so nothing is implemented yet. "Designed" means the mec
 **How this document was produced, measured against the same spec.** Research was delegated to 15 time-boxed teammates, each given a written brief with the "why", the task, references
 and an output contract. That is the Owner → Duty → executor pattern at small scale. Commands ran with timeouts, diagrams were validated by machine, and licenses were checked against
 source files. The design was then attacked by independent reviewers: a first review (15 findings) and a scale review (10 findings), followed by final multi-model rounds in which
-**every model reviewed every aspect** (three models × three aspects: flows and buildability; autonomy, safety and resilience; the human experience, fidelity and the DoD). Every finding was resolved in the document or recorded as an open question, and the
+**every model reviewed every aspect** (three models × three aspects: flows and buildability; autonomy, safety and resilience; the human experience, fidelity and the DoD). The rounds repeated until no reviewer reported a blocker, and Round 11 approved v0.13 unanimously. Every finding was resolved in the document, decided by the owner, or recorded as an open question, and the
 record is in [16-final-review-log.md](research/16-final-review-log.md). **There is one deviation.** The lead (acting as Owner) wrote this synthesis itself instead of delegating it.
 In the build phase, all implementation goes through Duty → Builder agents. hermes-agent was not used, because nothing had to run on a recurring schedule.
 

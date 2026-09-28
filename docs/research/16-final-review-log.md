@@ -267,7 +267,7 @@ v0.11 makes this the organizing loop of the architecture. §4's "The main flow" 
 
 | Aspect | gpt-6-sol | gpt-6-astra | claude-opus-5.5 |
 |---|---|---|---|
-| **A1 Flows and buildability** | **YES** | *pending* | **YES** |
+| **A1 Flows and buildability** | **YES** | **YES** | **YES** |
 | **A2 Autonomy, safety and resilience** | **YES** | **YES** | **YES** |
 | **A3 Human experience, fidelity and DoD** | **NO**: 1 blocker | **YES** | **YES** |
 
@@ -288,7 +288,7 @@ The state-table item was confirmed resolved, and every reviewer judged the main 
 
 | Aspect | gpt-6-sol | gpt-6-astra | claude-opus-5.5 |
 |---|---|---|---|
-| **A1 Flows and buildability** | **YES** | *pending* | **YES** |
+| **A1 Flows and buildability** | **YES** | **YES** | **YES** |
 | **A2 Autonomy, safety and resilience** | **YES** | **YES** | **YES** |
 | **A3 Human experience, fidelity and DoD** | **NO**: 1 blocker | **YES** | **YES** |
 
@@ -304,6 +304,39 @@ The one blocking review, with three passing ones agreeing, found that the Scope-
 | S3 | Losing a provider can leave one model family (Opus A2, Astra A2) | High-risk attestations then wait as a declared degraded wait, and two instances of one family never count as two verifiers | §6.11 |
 | S4 | Smaller items (Opus A1, A3; Astra A2; Sol A1) | `sim` and the replay harness use recorded or mocked providers behind the same gateway. The §9.5 diagram no longer shows an inference GPU pool. Q6 names the sealed-eval exception. `TaskOrigin.roots[]` charges every parent chain, and depth is the deepest parent's plus one | §4, §5, §8.1, §9.5, §12 |
 
-## Round 11 (v0.13): verification
+## Round 11 (v0.13): confirmation
 
-*This section is filled in as the nine reviews come back.*
+| Aspect | gpt-6-sol | gpt-6-astra | claude-opus-5.5 |
+|---|---|---|---|
+| **A1 Flows and buildability** | **YES** | **YES** | **YES** |
+| **A2 Autonomy, safety and resilience** | **YES** | **YES** | **YES** |
+| **A3 Human experience, fidelity and DoD** | **YES** | **YES** | **YES** |
+
+**Unanimous.** Every model approved every aspect of v0.13, with no blockers and no new nits. Each reviewer confirmed that its earlier findings were either resolved in the document or decided by the owner.
+
+## Result
+
+The protocol ran until no reviewer reported a blocker. Across eleven rounds and three models, the vote went as follows:
+
+| Round | Version | YES | NO |
+|---|---|---|---|
+| 1 | v0.3 | 0 | 3 |
+| 2 | v0.4 | 0 | 9 |
+| 3 | v0.5 | 1 | 8 |
+| 4 | v0.6 | 3 | 6 |
+| 5 | v0.7 | 2 | 7 |
+| 6 | v0.8 | 6 | 3 |
+| 7 | v0.9 | 6 | 3 |
+| 8 | v0.10 | 8 | 1 |
+| 9 | v0.11 | 8 | 1 |
+| 10 | v0.12 | 8 | 1 |
+| 11 | v0.13 | 9 | 0 |
+
+Round 5 dipped because the owner added the first four Q&A answers mid-review, and the reviewers were checking them for the first time. Later Q&A answers were folded in without new dips.
+
+**What the review doesn't settle.** It settles that the design is buildable, safe as specified and able to reach its definition of done. It doesn't settle:
+- the owner's open questions (Q1 to Q4 and Q6 to Q8; Q5 is decided);
+- the declared risks in §12;
+- whether the code, once built, matches the design.
+
+That last question is what the proof gates and D1 to D8 exist to answer.
