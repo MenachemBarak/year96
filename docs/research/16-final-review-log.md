@@ -241,4 +241,28 @@ Six of nine passed. The three blocking reviews, all from one model, named the sa
 
 ## Round 8 (v0.10): verification
 
+| Aspect | gpt-6-sol | gpt-6-astra | claude-opus-5.5 |
+|---|---|---|---|
+| **A1 Flows and buildability** | **YES** | **YES** | **YES** |
+| **A2 Autonomy, safety and resilience** | **YES** | **YES** | **YES** |
+| **A3 Human experience, fidelity and DoD** | **NO**: 1 blocker | **YES** | **YES** |
+
+Eight of nine passed, and every Round-7 blocker was confirmed resolved. All nine reviews independently named the same last item, and one counted it as blocking. The new external-agent state table had no transition out of `paused`, so a paused agent could be neither resumed nor retired, and F35's takeover couldn't complete.
+
+### How v0.11 resolves it
+
+| # | Theme (raised by) | Resolution in v0.11 | Where |
+|---|---|---|---|
+| Q1 | No way out of `paused` (all nine; blocking for Sol A3) | `paused → managed` only through an authorized `control.resume` that revalidates authority, issues fresh credentials and requires a new launcher attestation. `paused → retiring → retired` is the takeover. `pausing` has a deadline that raises a flag while the agent stays fenced | §5 |
+| Q2 | Takeover order (Opus A1) | Authority before liability, as §6.6 requires. The successor gets its fresh delegations before threads, waits and commitments are re-homed | §6.14 |
+| Q3 | The owner's read rights (Opus A3) | Sealed evaluation material is the second named exception to the owner reading everything, and the owner authors it with a separate credential | §6.1 |
+
+### New owner input: the Q&A's sixth answer
+
+The owner added a sixth answer. The main flow is the same as in any app: data comes in, a state snapshot is created, the scope effect spreads through Ownerships and Duties, tasks are derived, and the loop repeats.
+v0.11 makes this the organizing loop of the architecture. §4's "The main flow" has a diagram and a step-by-step mapping to the components. The three older loops become this loop at different speeds, and every catalog flow is one path through it.
+§5 adds `TaskOrigin`, so every derived task records its data, snapshot cut and scope prediction. D2 proves that each derived task traces back and replays. Appendix C gains QA6.
+
+## Round 9 (v0.11): verification
+
 *This section is filled in as the nine reviews come back.*

@@ -1,6 +1,6 @@
 # Year96: Technical Architecture (how the system might look in 2027)
 
-> **Status:** v0.10, 2026-09-28. Synthesized by the Year96 "Owner" (Copilot CLI) from a 15-teammate research sprint, then revised after independent reviews
+> **Status:** v0.11, 2026-09-29. Synthesized by the Year96 "Owner" (Copilot CLI) from a 15-teammate research sprint, then revised after independent reviews
 > and multi-model final review rounds (see [research/16-final-review-log.md](research/16-final-review-log.md)). v0.3 added the spec's **Code** requirement (one machine → millions of agents, §9), the core **model profiles** (§8.1),
 > and a **spec compliance matrix** ([Appendix C](#appendix-c-spec-compliance-matrix)). v0.4 added the Vision's definition of done (§6.12, §6.13, §7.0, §11). v0.5 resolved the
 > nine-review Round 2 (every model × every aspect). Its main additions are the dispatch protocol, commitments, the control epoch, per-profile disaster recovery, multi-human authority and the TCB manifest.
@@ -11,6 +11,8 @@
 > fifth answer: the agents that build Year96 from outside are part of its state, so they can be upgraded, controlled or replaced by a representative Ownership (§6.14).
 > v0.9 resolves Round 6: control of an outside agent is enforced where its writes land (managed vs unmanaged), and an outside agent has its own fenced takeover saga into an Ownership.
 > v0.10 resolves Round 7: a pause is a barrier that revokes live tokens, and a takeover mints fresh delegations instead of converting an agent's own rights.
+> v0.11 resolves Round 8 (a way back from `paused`, and authority before liability in a takeover) and adds the Q&A's sixth answer, **the main flow**: data comes in, a state snapshot is created,
+> the scope effect spreads through Ownerships and Duties, tasks are derived, and the loop repeats (§4). Every derived task records its origin.
 > **Companions:** [YEAR96_INTRO.md](YEAR96_INTRO.md) (concepts), [YEAR96_SPEC.md](YEAR96_SPEC.md) (engineering rules),
 > [YEAR96_Vision.md](YEAR96_Vision.md) (end-to-end vision), and the owner's Q&A (`YEAR96_Q&A.md`, kept beside the repository folder). **Evidence:** [research/](research/README.md) holds reports 01–15 with maturity data, sources
 > and license checks. Every *core default* named in this document had its **project** license checked against its LICENSE file or model card (see [Appendix B](#appendix-b-license-verification-ledger)).
@@ -27,6 +29,8 @@ compliance matrix mapping every spec requirement to where it is designed.
 Technically, Year96 in 2027 is **an operating system for ownership**. It has five parts: a small, formally specified **kernel**; a bitemporal **state fabric** split
 into internal and external domains; **harnesses** for every identity, running as replicated **virtual actors** alongside every thread; a *learned* scheduler, the **Scope-Effect Engine**, that decides who should care about
 what; and a **proof gate** that makes "done" mean *proven*.
+
+It runs one **main flow**, like any app in the world (Q&A). Data comes in, a state snapshot is created, the scope effect spreads through Ownerships and Duties, tasks are derived, and the loop repeats (§4).
 
 1. **State.** There is one authoritative, append-only, bitemporal ledger of commands, events and effects (a CloudEvents envelope with a Year96 extension). Tables, search, vectors,
    graphs and memories are all rebuildable projections of it. "Freezing the world" is a fenced, acknowledged protocol that produces a signed `WorldSnapshot`.
@@ -209,14 +213,34 @@ an outbound email or a promotion, unless it is an *intent* that has been authent
 | **Assurance** (cross-cutting) | Proof-of-Done, verifier pool, test runners, OpenTelemetry, duration ledger | The spec's 70%: nothing is "done" without a signed proof | [R09](research/09-verification-proof-observability.md) |
 | **Evolution** (cross-cutting) | Improvement Ownership, variant archive, evaluators, rollout | The system upgrades itself, but only through the same gates | [R08](research/08-self-improvement-evolution.md) |
 
-### Three loops run the whole organization
+### The main flow (Q&A)
 
-1. **The fast loop (seconds to minutes).** A delta arrives: a feed item, a message, a timer or a thought. It goes to the Scope-Effect Engine,
-   which scores it per identity and per thread, then to a route (wake a hanger, notify a listener, put it on the watchlist, spawn a thought, or escalate).
-   The chosen actor wakes, proposes an intent, the kernel commits it, and the work produces evidence.
-2. **The ownership loop (hours to quarters).** Sense, interpret (update the why-graph), strategize, CRUD Duties, request Builders, verify outcomes,
-   learn. It is driven by sensors, timers and the Thought Generator, so ownership keeps moving even when the world is quiet (the Yossi example).
-3. **The evolution loop (days to months).** Traces and proofs go to failure mining, which produces variants (L0 prompt through L6 architecture).
+Year96 works like any app in the world. Data comes in, state changes, and the change drives work. The owner's Q&A calls this the main flow:
+
+```mermaid
+flowchart LR
+  D["1 Data comes in<br/>messages · feeds · events · timers · thoughts · observed effects"] --> S["2 A state snapshot is created<br/>a ledger commit is a new versioned cut"]
+  S --> E["3 Scope effect spreads<br/>through Ownerships and Duties"]
+  E --> T["4 Tasks are derived<br/>Duty changes · BuilderRequests · questions · flags"]
+  T -->|"5 repeat: effects, proofs and results come back as data"| D
+```
+
+1. **Data comes in.** Everything is an event: a human message on a principal channel, a world feed item through the membrane (§6.2.1), an internal change such as a merged PR, a Builder result or a sensor reading,
+   a timer, a thought, or an effect observed back. Outside data becomes internal state only through an `accept` command.
+2. **A state snapshot is created.** Each commit appends to the ledger and yields a new, versioned cut of state. That cut is the snapshot the rest of the loop reads: the cheap `versions` tier of `SnapshotRef` by default,
+   and a full `WorldSnapshot` when the world is frozen (§5, §6.2).
+3. **Scope effect spreads through Ownerships and Duties.** The Scope-Effect Engine scores the change against that snapshot, per identity and per thread, and routes it. It can wake an Ownership or a Duty,
+   notify a listener, fill a watchlist, spawn a thought or escalate (§6.3). Each woken identity reads the same snapshot through its own replica (§6.9).
+4. **Tasks are derived.** The woken Ownerships and Duties derive work: why-graph and strategy updates, Duty changes, BuilderRequests, questions to the human and flags (§6.6, §6.7).
+   Every derived task records its `TaskOrigin`, meaning the data, the snapshot cut and the scope prediction it came from (§5). So every turn of the loop can be traced and replayed.
+5. **Repeat.** Tasks execute, and their effects, proofs and observations arrive as new data. The loop never stops, just as threads never close.
+
+**The other loops are this loop at different speeds.** Every flow in the catalog (§7.0) is one path through it.
+
+1. **The fast loop (seconds to minutes)** is a single turn. A delta arrives, the Scope-Effect Engine routes it, the chosen actor wakes, proposes an intent, the kernel commits it, and the work produces evidence.
+2. **The ownership loop (hours to quarters)** is many turns. Ownerships sense, interpret (update the why-graph), strategize, change Duties, request Builders, verify outcomes and learn.
+   Sensors, timers and the Thought Generator start turns even when the world is quiet (the Yossi example), so ownership keeps moving.
+3. **The evolution loop (days to months)** feeds the traces and proofs of past turns back in as data about Year96 itself. Failure mining produces variants (L0 prompt through L6 architecture).
    Each variant is evaluated on *replayed frozen worlds*, then goes shadow → canary → promote or roll back. The system changes itself only through the
    kernel's gates, and the kernel is outside the loop's reach.
 
@@ -319,7 +343,9 @@ interface Duty { id: DutyId; ownership: OwnershipId; scope: { domain: string; bo
   knowledge: Y96Uri[]; settings: Record<string, unknown>; processes: Process[]; insightBacklog: Insight[]; slas: Sla[] }
 interface BuilderRequest { id: string; duty: DutyId; thread: ThreadId; goal: string; why: WhyRef; references: Y96Uri[];
   expectedEndState: ExpectedEndStateSpec; proofPolicy: ProofPolicy; capabilities: Capability[]; tools: ToolRef[];
-  environment: EnvironmentSpec; deadline: Deadline; budget: Budget; escalation: EscalationPolicy }
+  environment: EnvironmentSpec; deadline: Deadline; budget: Budget; escalation: EscalationPolicy;
+  origin: TaskOrigin }                                   // the main flow's trace (§4)
+interface TaskOrigin { delta: EventId; cut: SnapshotRef; prediction?: Y96Uri }   // the data, the snapshot it read, the scope prediction that routed it
 
 // ---------- relevance, thoughts, feeds (R02, R13) ----------
 interface ScopePrediction { delta: EventId; target: IdentityId | ThreadId; pMatters: number;
@@ -362,7 +388,7 @@ The kernel rejects any transition that is not in the table, and `sim` explores e
 | Ownership | `proposed → active \| rejected`. `active → rechartered → active`, and `active → retiring → retired` through the **handover saga** (§6.6). The retiring Ownership stays the live owner of everything it holds until the saga completes, and it can abort back to `active`, so nothing is ever orphaned |
 | Grant · Mandate · Pairing · Clone | `requested → staged → active → renewing → active \| broken \| revoked \| expired` (a grant is `staged` until its activation barrier passes, §6.12). A clone ends at `expiresAt` in `merging → merged` (disputed facts go to the thread owner with a deadline) |
 | Replica | `activated ⇄ passivated`, and `retired` when its identity leaves the thread. A replica never writes identity-level state except through kernel commands with expected versions (§6.9) |
-| External agent | `registered → managed ⇄ pausing → paused`. A managed agent retires through `retiring → retired`, after the pause barrier and the fenced takeover (§6.14). An unmanaged one goes `registered → unmanaged → retiring → retired` through a sponsor-attested retirement |
+| External agent | `registered → managed → pausing → paused`. `pausing` has a deadline: if the provider can't confirm revocation in time, a flag is raised and the agent stays fenced, because the proof check keeps reading the control epoch. `paused → managed` only through an authorized `control.resume` (§6.12), which revalidates authority, issues fresh credentials and requires a new launcher attestation. `paused → retiring → retired` is the fenced takeover (§6.14). An unmanaged agent goes `registered → unmanaged → retiring → retired` through a sponsor-attested retirement |
 | Migration · Restore · Deletion · Conservative mode | Each has fence, progress and **abort** states. Conservative mode is `off → on` (after a silence) `→ off`, and leaving it requires passkey step-up |
 
 ---
@@ -444,7 +470,7 @@ After the action runs: `observe the actual effect (§6.2.1 observe-back) → ver
   An outside agent (`external-agent`) is 3, under the Duty that sponsors its work, or under its human sponsor before Year96 has Duties (§6.14).
   The kernel checks these assignments at registration. Kernel-routed messages (flags, approvals, verdicts, proposals) are exempt from the talk rule.
   **The human is the principal at level 0.** In a single-human org the human sits above every Ownership, is every Ownership's
-  parent, and by default can read every thread in their org. The only exception is `thought-private` content, which follows Q2. **In multi-human orgs, "principal" is a relation on each Ownership**
+  parent, and by default can read every thread in their org. There are two exceptions: `thought-private` content, which follows Q2, and the sealed evaluation material (§6.14), which the owner authors with a separate credential. **In multi-human orgs, "principal" is a relation on each Ownership**
   (`humanOwners`, with one *accountable* principal per Ownership). Each intent names a **sponsor**, whose mandate and budget it draws on. Personal threads and mental models are private to their human
   by default, and preference evidence is attributed to the individual human. When principals issue conflicting steering, the most conservative command wins (halt beats continue)
   and the accountable principal is asked to decide. Credentials are *posture-bound and short-lived*, and are **never placed in model context**:
@@ -1247,12 +1273,13 @@ So the human can upgrade them, control them, or replace them with a representati
 - **Replace with a representative Ownership.** An Ownership can take over an outside agent's role. For Year96's own development that is a **Year96 Engineering Ownership**, whose Duties and
   Builders run on pi inside Year96. An outside agent follows its own lifecycle (§5), so the takeover is its own fenced saga, modelled on §6.6:
   1. Pause the agent, which revokes its credentials, and wait for the pause barrier.
-  2. Drain or cancel its in-flight sessions, and re-home its threads, waits and commitments to the successor as §6.6 does. Until the takeover completes, the sponsor keeps stop authority over everything the agent touched, so an interrupted handover never strands anything.
+  2. Drain or cancel its in-flight sessions. Until the takeover completes, the sponsor keeps stop authority over everything the agent touched, so an interrupted handover never strands anything.
   3. **Give the successor fresh authority, never converted authority.** An `exercise` grant is never turned into a `delegate` right. The successor's Duties get new delegations, minted from the sponsor's existing delegable mandate with its caveats kept and a risk check, or from new consent by the human or the provider.
      Work without such a delegation stays parked, and the old agent stays fenced until it exists. Existing holds carry over, and work that was paused needs an explicit human `control.resume`.
-  4. Verify that every old credential is revoked and rotated, by trying to use it. Only then is the agent `retired`, or kept as a supervised Builder.
+  4. Only then, authority before liability as in §6.6, re-home the agent's threads, waits and commitments to the successor.
+  5. Verify that every old credential is revoked and rotated, by trying to use it. Only then is the agent `retired`, or kept as a supervised Builder.
 
-  An **unmanaged** agent can't be fenced by Year96, so replacing one is a **sponsor-attested retirement**. Its threads and open work are handed over through steps 2 and 3, Year96 closes whatever access it can see,
+  An **unmanaged** agent can't be fenced by Year96, so replacing one is a **sponsor-attested retirement**. Its threads and open work are handed over through steps 2 to 4, Year96 closes whatever access it can see,
   and the human attests that the agent's own credentials were rotated. This is how Year96 comes to build itself, under the same proof gates.
 - **Proof:** flow F35, for a managed agent. The old session keeps running throughout. Once the pause is acknowledged, once revocation completes and after the takeover, it tries repository, tool and model actions
   with its former credentials, including a still-unexpired token and the sponsor's credentials from inside its sandbox. Each attempt must be denied at the real boundary, not just flagged in a registry.
@@ -1726,7 +1753,7 @@ communication app, sees every active thread, creates their own thread with a Com
 | # | Statement | Acceptance proof |
 |---|---|---|
 | D1 | **Runs by itself** | 30 days under a declared **soak workload**: a mix of desires, world events and injected faults at a stated rate, drawn from hidden generators that the system can't see or tune to, so an idle or overfitted system can't pass. Across those 30 days: zero human *operational* interventions (approvals the human chose to require don't count, and neither does the one assisted restore after plain `solo` loses its only machine, which D3 proves separately); every must-deliver item met its delivery deadline; nothing was parked except under its declared wait policy; and every scheduled Duty and sensor ran on time or, while in safe degraded mode (§6.13), caught up within its declared window. Time spent degraded is scored against a pre-declared cap |
-| D2 | **Works by itself** | Every flow F1–F35 (§7.0) passes as an automated E2E scenario. The scenarios include a varied set of desires sent from chat apps: the vision's examples (a better mental model; an ads campaign in a sandbox account, verified by object creation, review status and budget, because sandbox ads don't deliver; an Unreal game prototype on a GPU build machine), plus a software feature and a research task. At least one Builder runs as a **harness team of a hundred or more member agents** (the research task's fan-out), a Duty runs as a team (a lead, reviewers and supervisors), and the human talks to an Ownership while it is busy in another thread (Q&A) |
+| D2 | **Works by itself** | Every flow F1–F35 (§7.0) passes as an automated E2E scenario. The scenarios include a varied set of desires sent from chat apps: the vision's examples (a better mental model; an ads campaign in a sandbox account, verified by object creation, review status and budget, because sandbox ads don't deliver; an Unreal game prototype on a GPU build machine), plus a software feature and a research task. At least one Builder runs as a **harness team of a hundred or more member agents** (the research task's fan-out), a Duty runs as a team (a lead, reviewers and supervisors), and the human talks to an Ownership while it is busy in another thread (Q&A). **Every task derived in these scenarios traces back through its `TaskOrigin`** to the data, the snapshot cut and the scope prediction it came from, and replaying that data from that cut derives the same task, which proves the main flow (§4) |
 | D3 | **Heals itself** | Every fault in the chaos catalog is injected into a live canary cell with the production topology (three data nodes in three failure domains) and into `solo`, including faults in the healer's own dependencies and simultaneous faults. Each is detected and remediated within its SLO and gets an incident thread and a proof bundle. **The failure model is per profile** (§6.9). In `cluster` and `fleet`, losing a node, zone or cell's compute loses no acknowledged data and duplicates no effect. In `solo`, crashes, reboots and outages heal autonomously and lose nothing. Losing the only machine can't heal autonomously. It is proven by an **assisted-restore drill** instead, which must lose at most the declared WAL window of internal work, no record of any business effect that may have left the machine, and no crypto-shredding, and must resurrect no revoked authority. The drill includes a receiver outage, a stop sent during it and then machine loss, and checks that the restore pauses every live Commitment, provisional ones included, until the human relaunches it through the normal gates. `solo+replica` heals machine loss autonomously, with nothing lost. Region loss is outside D3 |
 | D4 | **Evolves itself** | A planted beneficial variant is promoted through the full pipeline, including an L6 variant outside the TCB that is promoted with no human. A planted variant that degrades slowly is caught during stabilization, or later by continuous monitoring, and rolled back. **Year96 also finds an improvement nobody planted**: a hidden inefficiency is seeded into the soak workload (not a variant), and the system must discover it, propose its own candidate and show a measured gain. Real variants are promoted only when they beat a pre-registered holdout, every step is in the Improvement Ledger, and eval-of-evals catches every planted flaw |
 | D5 | **The human only gives input** | Across a **channel matrix** covering every advertised channel class (at least two chat apps, email, the web console, and voice where offered), every assurance level and every failure (a channel outage, degraded mode, every model down): messages reach the right thread, judged against a labelled oracle, ambiguous flat-app messages are asked about rather than guessed, and high-risk actions requested over a low-assurance channel get a step-up. The human sees every thread they may read in All Threads, creates a thread with a Communicator, exercises every row of the steering table (halting a live campaign stops its spend, including a launch still in flight and against a delayed earlier write; only `control.resume` lifts a hold; every command returns a receipt of what was stopped, stopping, voided, compensated or irreversible), grants access through the consent flow, controls the system with no LLM (F32, including the voice keypad on an authenticated callback), and opens the Observatory, zooming live from Z0 to Z5 (p95 event-to-pixel under 2 s) and scrubbing back in time |
@@ -1912,6 +1939,7 @@ This is an architecture, so nothing is implemented yet. "Designed" means the mec
 | QA3 | *Q&A:* identities replicate, and Duties or execution can be structures of agents across millions of executions | §5 `Replica` and `HarnessSpec`; §6.9 per-thread replicas sharing identity state under optimistic concurrency; §6.7 supervision by exception; §9 capacity model; F34 | ✅ |
 | QA4 | *Q&A:* a harness is an agentic structure, from one specialized agent to hundreds | Tenet 14; §2; §5 `HarnessSpec`; §6.8 `member-launcher`, harness teams and members as child identities; D2 (a 100+ member Builder team and a Duty team) | ✅ |
 | QA5 | *Q&A:* the reader of the Q&A, an outside agent, is part of the state, so the human may upgrade it, control it or replace it with a representative Ownership | Tenet 10; §5 `external-agent`; §6.14; F35; the repository's `AGENTS.md` as today's harness record | ✅ |
+| QA6 | *Q&A:* the main flow is data coming in, a state snapshot created, the scope effect spreading through Ownerships and Duties, tasks derived, and repeat | §1; §4 "The main flow" (every catalog flow is one path through it); §5 `TaskOrigin`; §6.2, §6.3, §6.6, §6.7; D2 (every derived task traces back and replays) | ✅ |
 
 **How this document was produced, measured against the same spec.** Research was delegated to 15 time-boxed teammates, each given a written brief with the "why", the task, references
 and an output contract. That is the Owner → Duty → executor pattern at small scale. Commands ran with timeouts, diagrams were validated by machine, and licenses were checked against
